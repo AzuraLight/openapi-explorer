@@ -1,0 +1,17 @@
+# 소스/개발 파일은 패키지에서 제외 (dist 번들만 배포)
+.vscode/**
+src/**
+node_modules/**
+scripts/**
+**/*.test.ts
+**/*.map
+.github/**
+esbuild.mjs
+eslint.config.mjs
+tsconfig.json
+.prettierrc.json
+.gitignore
+.vscodeignore
+README.ko.md
+media/icon.svg
+**/.DS_Store

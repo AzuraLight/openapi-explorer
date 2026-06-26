@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.vsix
+*.map
+.DS_Store
+
+# generated from swagger-ui-dist by scripts/copy-swagger-ui.mjs (npm run copy-assets)
+media/swagger-ui/
