@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!--
+    OpenAPI Explorer marketplace icon.
+    Identity: a Swagger-style API mark (ring + center node) on Swagger's signature
+    green (#49cc90, the GET-method color) so the OpenAPI / Swagger identity reads
+    instantly. Flat and minimal: one solid field, one white mark.
+  -->
+  <rect width="256" height="256" fill="#49cc90"/>
+  <circle cx="128" cy="128" r="72" fill="none" stroke="#ffffff" stroke-width="18"/>
+  <circle cx="128" cy="128" r="22" fill="#ffffff"/>
+</svg>

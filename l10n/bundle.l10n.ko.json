@@ -1,0 +1,18 @@
+{
+  "Failed to load": "불러오기 실패",
+  "Failed to load spec: {0}": "스펙 로드 실패: {0}",
+  "Copied {0} to clipboard.": "{0}을(를) 클립보드에 복사했습니다.",
+  "No Swagger spec registered.": "등록된 Swagger 스펙이 없습니다.",
+  "Select a spec (gateway)": "스펙(게이트웨이) 선택",
+  "Swagger refreshed.": "Swagger 새로고침 완료",
+  "Default Swagger URL (a UI page address works too)": "기본 Swagger URL (UI 페이지 주소도 됨)",
+  "Spec display name": "스펙 표시 이름",
+  "e.g. Payment Gateway": "예: 결제 게이트웨이",
+  "Swagger URL (a UI page address works too)": "Swagger URL (UI 페이지 주소도 됨)",
+  "Spec added: {0}": "스펙 추가: {0}",
+  "Failed to open Swagger UI: {0}": "Swagger UI 열기 실패: {0}",
+  "Search endpoints (method/path/summary)": "엔드포인트 검색 (메서드/경로/요약)",
+  "Authorization token (Bearer). Stored securely in SecretStorage.": "Authorization 토큰 (Bearer). SecretStorage에 안전하게 저장됩니다.",
+  "Authorization token saved.": "인증 토큰을 저장했습니다.",
+  "Authorization token cleared.": "인증 토큰을 삭제했습니다."
+}

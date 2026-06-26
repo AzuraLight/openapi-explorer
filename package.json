@@ -1,0 +1,195 @@
+{
+  "name": "openapi-explorer",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "l10n": "./l10n",
+  "version": "1.0.0",
+  "publisher": "AzuraLight",
+  "author": "AzuraLight <azuralight09@gmail.com>",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AzuraLight/openapi-explorer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AzuraLight/openapi-explorer/issues"
+  },
+  "homepage": "https://github.com/AzuraLight/openapi-explorer#readme",
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=18"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "swagger",
+    "openapi",
+    "api",
+    "rest",
+    "rest-client",
+    "api-client",
+    "try-it-out",
+    "code-generation",
+    "typescript",
+    "axios",
+    "fetch",
+    "curl",
+    "api-gateway",
+    "cors"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "swaggerViewer",
+          "title": "OpenAPI",
+          "icon": "media/openapi.svg"
+        }
+      ]
+    },
+    "views": {
+      "swaggerViewer": [
+        {
+          "id": "swaggerExplorer",
+          "name": "%view.explorer%",
+          "icon": "media/openapi.svg"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "swaggerExplorer",
+        "contents": "%welcome%"
+      }
+    ],
+    "commands": [
+      { "command": "swaggerViewer.setUrl", "title": "%cmd.setUrl%", "category": "OpenAPI", "icon": "$(link)" },
+      { "command": "swaggerViewer.refresh", "title": "%cmd.refresh%", "category": "OpenAPI", "icon": "$(refresh)" },
+      { "command": "swaggerViewer.openInBrowser", "title": "%cmd.openInBrowser%", "category": "OpenAPI", "icon": "$(globe)" },
+      { "command": "swaggerViewer.setToken", "title": "%cmd.setToken%", "category": "OpenAPI", "icon": "$(key)" },
+      { "command": "swaggerViewer.clearToken", "title": "%cmd.clearToken%", "category": "OpenAPI" },
+      { "command": "swaggerViewer.openSwaggerUI", "title": "%cmd.openSwaggerUI%", "category": "OpenAPI", "icon": "$(book)" },
+      { "command": "swaggerViewer.search", "title": "%cmd.search%", "category": "OpenAPI", "icon": "$(search)" },
+      { "command": "swaggerViewer.addSpec", "title": "%cmd.addSpec%", "category": "OpenAPI" },
+      { "command": "swaggerViewer.openOperation", "title": "%cmd.openOperation%", "category": "OpenAPI" },
+      { "command": "swaggerViewer.copyTs", "title": "%cmd.copyTs%", "category": "OpenAPI" },
+      { "command": "swaggerViewer.copyFetch", "title": "%cmd.copyFetch%", "category": "OpenAPI" },
+      { "command": "swaggerViewer.copyAxios", "title": "%cmd.copyAxios%", "category": "OpenAPI" },
+      { "command": "swaggerViewer.copyCurl", "title": "%cmd.copyCurl%", "category": "OpenAPI" }
+    ],
+    "keybindings": [
+      {
+        "command": "swaggerViewer.search",
+        "key": "ctrl+alt+/",
+        "mac": "cmd+alt+/"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "swaggerViewer.search", "when": "view == swaggerExplorer", "group": "navigation@1" },
+        { "command": "swaggerViewer.openSwaggerUI", "when": "view == swaggerExplorer", "group": "navigation@2" },
+        { "command": "swaggerViewer.refresh", "when": "view == swaggerExplorer", "group": "navigation@3" },
+        { "command": "swaggerViewer.setUrl", "when": "view == swaggerExplorer", "group": "1_config@1" },
+        { "command": "swaggerViewer.addSpec", "when": "view == swaggerExplorer", "group": "1_config@2" },
+        { "command": "swaggerViewer.openInBrowser", "when": "view == swaggerExplorer", "group": "1_config@3" },
+        { "command": "swaggerViewer.setToken", "when": "view == swaggerExplorer", "group": "2_auth@1" },
+        { "command": "swaggerViewer.clearToken", "when": "view == swaggerExplorer", "group": "2_auth@2" }
+      ],
+      "view/item/context": [
+        { "command": "swaggerViewer.openSwaggerUI", "when": "view == swaggerExplorer && viewItem == spec", "group": "inline" },
+        { "command": "swaggerViewer.openInBrowser", "when": "view == swaggerExplorer && viewItem == spec", "group": "1_open@1" },
+        { "command": "swaggerViewer.copyTs", "when": "view == swaggerExplorer && viewItem == endpoint", "group": "1_copy@1" },
+        { "command": "swaggerViewer.copyFetch", "when": "view == swaggerExplorer && viewItem == endpoint", "group": "1_copy@2" },
+        { "command": "swaggerViewer.copyAxios", "when": "view == swaggerExplorer && viewItem == endpoint", "group": "1_copy@3" },
+        { "command": "swaggerViewer.copyCurl", "when": "view == swaggerExplorer && viewItem == endpoint", "group": "1_copy@4" },
+        { "command": "swaggerViewer.copyTs", "when": "view == swaggerExplorer && viewItem == model", "group": "1_copy@1" }
+      ],
+      "commandPalette": [
+        { "command": "swaggerViewer.openOperation", "when": "false" },
+        { "command": "swaggerViewer.copyTs", "when": "false" },
+        { "command": "swaggerViewer.copyFetch", "when": "false" },
+        { "command": "swaggerViewer.copyAxios", "when": "false" },
+        { "command": "swaggerViewer.copyCurl", "when": "false" }
+      ]
+    },
+    "configuration": {
+      "title": "OpenAPI Explorer",
+      "properties": {
+        "swaggerViewer.url": {
+          "type": "string",
+          "default": "",
+          "description": "%config.url%"
+        },
+        "swaggerViewer.specs": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object",
+            "required": ["name", "url"],
+            "properties": {
+              "name": { "type": "string", "description": "%config.specs.name%" },
+              "url": { "type": "string", "description": "%config.specs.url%" }
+            }
+          },
+          "markdownDescription": "%config.specs%"
+        },
+        "swaggerViewer.headers": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          },
+          "markdownDescription": "%config.headers%"
+        },
+        "swaggerViewer.strictSSL": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.strictSSL%"
+        },
+        "swaggerViewer.caCertPath": {
+          "type": "string",
+          "default": "",
+          "description": "%config.caCertPath%"
+        },
+        "swaggerViewer.proxy": {
+          "type": "string",
+          "default": "",
+          "description": "%config.proxy%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run assets && npm run build",
+    "assets": "node scripts/copy-swagger-ui.mjs",
+    "build": "node esbuild.mjs --production",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write \"**/*.{ts,js,mjs,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,js,mjs,json,md}\"",
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "copy-assets": "node scripts/copy-swagger-ui.mjs",
+    "prepare": "node scripts/copy-swagger-ui.mjs",
+    "package": "vsce package --no-dependencies -o openapi-explorer-$npm_package_version.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^8.13.0",
+    "@typescript-eslint/parser": "^8.13.0",
+    "@vscode/vsce": "^3.2.0",
+    "esbuild": "^0.24.0",
+    "eslint": "^9.14.0",
+    "https-proxy-agent": "^7.0.5",
+    "prettier": "^3.3.3",
+    "swagger-ui-dist": "^5.32.6",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
