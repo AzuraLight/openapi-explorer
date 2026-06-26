@@ -173,7 +173,7 @@
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"**/*.{ts,js,mjs,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,js,mjs,json,md}\"",
-    "test": "node --import tsx --test src/**/*.test.ts",
+    "test": "node --import tsx --test src/*.test.ts",
     "copy-assets": "node scripts/copy-swagger-ui.mjs",
     "prepare": "node scripts/copy-swagger-ui.mjs",
     "package": "vsce package --no-dependencies -o openapi-explorer-$npm_package_version.vsix"
