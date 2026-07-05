@@ -1,4 +1,4 @@
-// 스펙 → 구조화 + TS 타입 / cURL 생성
+// Spec → structuring + TS type / cURL generation
 import { resolveRef, getSchemas } from "./specLoader";
 import type {
   OpenApiSpec,
@@ -17,7 +17,7 @@ function refName(ref: string | undefined): string | null {
   return typeof ref === "string" ? (ref.split("/").pop() ?? null) : null;
 }
 
-// 짧은 타입 표기 (ref는 모델 이름만, 인라인 객체는 얕게 전개)
+// Short type notation (refs show only the model name, inline objects are expanded shallowly)
 export function shortType(schema?: Schema): string {
   if (!schema) return "any";
   if (schema.$ref) return refName(schema.$ref) ?? "any";
@@ -42,7 +42,7 @@ export function listEndpoints(spec: OpenApiSpec): EndpointSummary[] {
       out.push({
         method: method.toUpperCase(),
         path,
-        tag: (o.tags || [])[0] || "기타",
+        tag: (o.tags || [])[0] || "Other",
         summary: o.summary || "",
         operationId: o.operationId,
       });
@@ -122,7 +122,7 @@ export function modelDetail(spec: OpenApiSpec, name: string): ModelDetail | null
   return { name, description: schema.description || "", fields };
 }
 
-// ---- TS 타입 생성 ----
+// ---- TS type generation ----
 export function tsType(schema?: Schema): string {
   if (!schema) return "any";
   if (schema.$ref) return refName(schema.$ref) ?? "any";
@@ -175,7 +175,7 @@ export function genTsForModel(spec: OpenApiSpec, name: string, seen = new Set<st
   seen.add(name);
   const schemas = getSchemas(spec);
   const schema = schemas[name];
-  if (!schema) return `// ${name} (정의 없음)`;
+  if (!schema) return `// ${name} (no definition)`;
   const req = new Set(schema.required || []);
   const deps = new Set<string>();
   const lines = Object.entries(schema.properties || {}).map(([k, v]) => {
@@ -227,7 +227,7 @@ export function genTsForEndpoint(spec: OpenApiSpec, detail: EndpointDetail): str
   return out;
 }
 
-// ---- 클라이언트 함수 생성 (fetch / axios) ----
+// ---- Client function generation (fetch / axios) ----
 function camelize(s: string): string {
   const cleaned = s.replace(/[^A-Za-z0-9]+/g, " ").trim();
   const parts = cleaned.split(/\s+/);
@@ -268,7 +268,7 @@ function responseModelsAndType(spec: OpenApiSpec, detail: EndpointDetail): { mod
   return { models: blocks.join("\n\n"), type: tsType(schema) };
 }
 
-// 함수 시그니처용 파라미터 조각 + URL/쿼리/바디 구성
+// Parameter fragments for the function signature + URL/query/body construction
 function clientParts(detail: EndpointDetail) {
   const pathParams = detail.parameters.filter((p) => p.in === "path");
   const queryParams = detail.parameters.filter((p) => p.in === "query");
@@ -283,7 +283,7 @@ function clientParts(detail: EndpointDetail) {
   return { sig: sig.join(", "), pathExpr, hasQuery: queryParams.length > 0, hasBody: !!detail.requestBody };
 }
 
-// shortType(integer 등) → TS 파라미터 타입
+// shortType (integer, etc.) → TS parameter type
 function tsParamType(t: string): string {
   if (t === "integer") return "number";
   return t || "string";
@@ -306,7 +306,7 @@ export async function ${name}(${sig}): Promise<${type}> {${qInit}
   const res = await fetch(${urlExpr}, {
 ${init.join(",\n")},
   });
-  if (!res.ok) throw new Error(\`${name} 실패: \${res.status}\`);
+  if (!res.ok) throw new Error(\`${name} failed: \${res.status}\`);
   return res.json() as Promise<${type}>;
 }`;
 }
@@ -340,7 +340,7 @@ function safeOrigin(spec: OpenApiSpec, baseUrl: string): string {
   }
 }
 
-// ---- 요청 바디 예시(JSON) 생성 ----
+// ---- Request body example (JSON) generation ----
 function exampleForSchema(spec: OpenApiSpec, schema: Schema | undefined, seen = new Set<string>()): unknown {
   if (!schema) return null;
   if (schema.example !== undefined) return schema.example;
@@ -389,7 +389,7 @@ export function exampleRequestBody(spec: OpenApiSpec, detail: EndpointDetail): s
   }
 }
 
-// ---- cURL 생성 ----
+// ---- cURL generation ----
 export function genCurl(spec: OpenApiSpec, detail: EndpointDetail, baseUrl: string): string {
   const origin = (() => {
     try {

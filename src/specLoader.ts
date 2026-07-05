@@ -1,6 +1,6 @@
-// Swagger/OpenAPI 스펙 로더
-// UI 페이지(HTML) URL을 받아도 실제 스펙(JSON)을 자동 탐색한다.
-// fetcher를 주입받아 vscode/네트워크와 분리 → 단위 테스트 가능.
+// Swagger/OpenAPI spec loader
+// Even given a UI page (HTML) URL, it auto-discovers the actual spec (JSON).
+// Takes an injected fetcher to decouple from vscode/network → unit testable.
 import type { Fetcher, OpenApiSpec, Schema } from "./types";
 
 const SPEC_CACHE = new Map<string, { spec: OpenApiSpec; fetchedAt: number }>();
@@ -76,7 +76,7 @@ export interface ResolveOptions {
 }
 
 export async function resolveSpec(inputUrl: string, opts: ResolveOptions): Promise<ResolveResult> {
-  if (!inputUrl) throw new Error("Swagger URL이 비어 있습니다.");
+  if (!inputUrl) throw new Error("Swagger URL is empty.");
   const { fetcher, force = false } = opts;
 
   const resolved = URL_RESOLVE_CACHE.get(inputUrl);
@@ -88,8 +88,10 @@ export async function resolveSpec(inputUrl: string, opts: ResolveOptions): Promi
   }
 
   const tried: string[] = [];
+  let authStatus = 0; // detect 401/403 → signals login required
   const first = await fetcher(inputUrl);
   tried.push(`${inputUrl} → ${first.status}`);
+  if (first.status === 401 || first.status === 403) authStatus = first.status;
   if (first.ok) {
     const parsed = tryParse(first.body);
     if (parsed) return cacheAndReturn(inputUrl, inputUrl, parsed, tried);
@@ -106,10 +108,16 @@ export async function resolveSpec(inputUrl: string, opts: ResolveOptions): Promi
     if (cand === inputUrl) continue;
     const r = await fetcher(cand);
     tried.push(`${cand} → ${r.status}`);
+    if ((r.status === 401 || r.status === 403) && !authStatus) authStatus = r.status;
     const p = r.ok ? tryParse(r.body) : null;
     if (p) return cacheAndReturn(inputUrl, cand, p, tried);
   }
-  throw new Error(`OpenAPI 스펙을 찾지 못했습니다.\n시도: ${tried.join(", ")}`);
+  if (authStatus) {
+    throw new Error(
+      `Login required (HTTP ${authStatus}). Set your username/password via 'OpenAPI: Set Username & Password'.\nTried: ${tried.join(", ")}`
+    );
+  }
+  throw new Error(`OpenAPI spec not found.\nTried: ${tried.join(", ")}`);
 }
 
 function cacheAndReturn(

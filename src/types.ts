@@ -1,4 +1,4 @@
-// 최소한의 OpenAPI 타입 (느슨하게 — 실무 스펙 편차 흡수)
+// Minimal OpenAPI types (loose — absorbs variance across real-world specs)
 export interface OpenApiSpec {
   openapi?: string;
   swagger?: string;
@@ -65,7 +65,7 @@ export interface HttpResponse {
 
 export type Fetcher = (url: string) => Promise<HttpResponse>;
 
-// 구조화 결과
+// Structured results
 export interface EndpointSummary {
   method: string;
   path: string;

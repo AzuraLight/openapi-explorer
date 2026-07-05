@@ -8,6 +8,8 @@
   "cmd.openInBrowser": "브라우저로 열기",
   "cmd.setToken": "인증 토큰 설정",
   "cmd.clearToken": "인증 토큰 삭제",
+  "cmd.setBasicAuth": "아이디/비밀번호 설정",
+  "cmd.clearBasicAuth": "아이디/비밀번호 삭제",
   "cmd.openSwaggerUI": "Swagger UI 열기",
   "cmd.search": "엔드포인트 검색",
   "cmd.addSpec": "스펙(게이트웨이) 추가",

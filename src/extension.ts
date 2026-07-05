@@ -14,17 +14,18 @@ import { openSwaggerUi, type FocusTarget } from "./swaggerUi";
 import { createHttpFetcher, type HttpOptions } from "./http";
 
 const SECRET_TOKEN_KEY = "swaggerViewer.authToken";
+const SECRET_BASIC_KEY = "swaggerViewer.basicAuth";
 
 interface SpecConfig {
   name: string;
   url: string;
 }
 
-// 로드된 스펙 캐시 (입력 URL 기준)
+// Cache of loaded specs (keyed by input URL)
 const specCache = new Map<string, ResolveResult>();
 
-// 작업 영역이 열려 있으면 Workspace, 아니면 Global(사용자) 설정에 저장한다.
-// (폴더 없이 연 창에서 Workspace 설정 쓰기는 실패하기 때문)
+// Save to Workspace settings if a workspace is open, otherwise Global (user) settings.
+// (Writing Workspace settings fails in a window opened without a folder)
 function configTarget(): vscode.ConfigurationTarget {
   return vscode.workspace.workspaceFolders?.length
     ? vscode.ConfigurationTarget.Workspace
@@ -39,7 +40,7 @@ function hostOf(url: string): string {
   }
 }
 
-// 설정된 스펙 목록 (specs 우선, 없으면 단일 url)
+// List of configured specs (specs first, otherwise the single url)
 function getSpecConfigs(): SpecConfig[] {
   const cfg = vscode.workspace.getConfiguration("swaggerViewer");
   const specs = cfg.get<SpecConfig[]>("specs") || [];
@@ -49,20 +50,71 @@ function getSpecConfigs(): SpecConfig[] {
   return url ? [{ name: hostOf(url), url }] : [];
 }
 
-// 설정 헤더 + SecretStorage 토큰 → 요청 헤더
-async function buildHeaders(context: vscode.ExtensionContext): Promise<Record<string, string>> {
+interface BasicCredential {
+  username: string;
+  password: string;
+}
+
+// Configured headers + SecretStorage credentials → request headers.
+// Priority: custom Authorization header > Bearer token > Basic (username/password).
+// Basic credentials are per-host; targetUrl selects which host's credential applies.
+async function buildHeaders(
+  context: vscode.ExtensionContext,
+  targetUrl?: string
+): Promise<Record<string, string>> {
   const cfg = vscode.workspace.getConfiguration("swaggerViewer");
   const headers: Record<string, string> = { ...(cfg.get<Record<string, string>>("headers") || {}) };
-  const token = await context.secrets.get(SECRET_TOKEN_KEY);
-  if (token && !headers["Authorization"]) headers["Authorization"] = `Bearer ${token}`;
+  if (!headers["Authorization"]) {
+    const token = await context.secrets.get(SECRET_TOKEN_KEY);
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    } else {
+      const basic = targetUrl ? await readBasicAuthForHost(context, hostOf(targetUrl)) : undefined;
+      if (basic) {
+        const encoded = Buffer.from(`${basic.username}:${basic.password}`).toString("base64");
+        headers["Authorization"] = `Basic ${encoded}`;
+      }
+    }
+  }
   return headers;
 }
 
-async function buildHttpOptions(context: vscode.ExtensionContext): Promise<HttpOptions> {
+// Stored as a { [host]: { username, password } } map in one SecretStorage entry.
+async function readBasicAuthMap(context: vscode.ExtensionContext): Promise<Record<string, BasicCredential>> {
+  const raw = await context.secrets.get(SECRET_BASIC_KEY);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed as Record<string, BasicCredential>;
+  } catch {
+    /* ignore corrupted value */
+  }
+  return {};
+}
+
+async function readBasicAuthForHost(
+  context: vscode.ExtensionContext,
+  host: string
+): Promise<BasicCredential | undefined> {
+  const map = await readBasicAuthMap(context);
+  const cred = map[host];
+  if (cred && typeof cred.username === "string" && typeof cred.password === "string") return cred;
+  return undefined;
+}
+
+async function writeBasicAuthMap(
+  context: vscode.ExtensionContext,
+  map: Record<string, BasicCredential>
+): Promise<void> {
+  if (Object.keys(map).length === 0) await context.secrets.delete(SECRET_BASIC_KEY);
+  else await context.secrets.store(SECRET_BASIC_KEY, JSON.stringify(map));
+}
+
+async function buildHttpOptions(context: vscode.ExtensionContext, targetUrl?: string): Promise<HttpOptions> {
   const cfg = vscode.workspace.getConfiguration("swaggerViewer");
   const vscodeProxy = vscode.workspace.getConfiguration("http").get<string>("proxy") || "";
   return {
-    headers: await buildHeaders(context),
+    headers: await buildHeaders(context, targetUrl),
     strictSSL: cfg.get<boolean>("strictSSL", true),
     caCertPath: cfg.get<string>("caCertPath") || undefined,
     proxy: cfg.get<string>("proxy") || vscodeProxy || undefined,
@@ -71,7 +123,7 @@ async function buildHttpOptions(context: vscode.ExtensionContext): Promise<HttpO
 
 async function ensureSpec(context: vscode.ExtensionContext, url: string, force = false): Promise<ResolveResult> {
   if (!force && specCache.has(url)) return specCache.get(url)!;
-  const fetcher = createHttpFetcher(await buildHttpOptions(context));
+  const fetcher = createHttpFetcher(await buildHttpOptions(context, url));
   const res = await resolveSpec(url, { force, fetcher });
   specCache.set(url, res);
   return res;
@@ -109,18 +161,24 @@ class SwaggerTreeProvider implements vscode.TreeDataProvider<Node> {
     if (!configs.length) return [];
 
     if (!element) {
-      if (configs.length > 1) {
-        return configs.map((c) => {
-          const n: Node = new vscode.TreeItem(c.name, vscode.TreeItemCollapsibleState.Collapsed);
-          n.description = hostOf(c.url);
-          n.iconPath = new vscode.ThemeIcon("server");
-          n.contextValue = "spec";
-          n._specNode = true;
-          n._specUrl = c.url;
-          return n;
-        });
-      }
-      return this.specChildren(configs[0].url);
+      // Always show each spec (gateway) as a top-level node so its address is visible
+      // and credentials can be managed from its right-click menu.
+      const authMap = await readBasicAuthMap(this.context);
+      return configs.map((c) => {
+        const host = hostOf(c.url);
+        const cred = authMap[host];
+        const n: Node = new vscode.TreeItem(c.name, vscode.TreeItemCollapsibleState.Collapsed);
+        const parts: string[] = [];
+        if (c.name !== host) parts.push(host);
+        if (cred) parts.push(`🔑 ${cred.username}`);
+        n.description = parts.join(" · ") || undefined;
+        n.iconPath = new vscode.ThemeIcon("server");
+        n.contextValue = cred ? "specAuthed" : "spec";
+        n.tooltip = cred ? `${c.url}\nBasic auth: ${cred.username}` : c.url;
+        n._specNode = true;
+        n._specUrl = c.url;
+        return n;
+      });
     }
 
     if (element._specNode && element._specUrl) return this.specChildren(element._specUrl);
@@ -180,7 +238,7 @@ class SwaggerTreeProvider implements vscode.TreeDataProvider<Node> {
     return [];
   }
 
-  // 한 스펙의 태그/모델 노드 (태그는 기본 접힘)
+  // Tag/model nodes for a single spec (tags collapsed by default)
   private async specChildren(url: string): Promise<Node[]> {
     let res: ResolveResult;
     try {
@@ -226,7 +284,7 @@ function methodIcon(method: string): vscode.ThemeIcon {
   return map[method] || new vscode.ThemeIcon("symbol-method");
 }
 
-// ---------------- Swagger UI 점프 ----------------
+// ---------------- Swagger UI jump ----------------
 async function openOperation(context: vscode.ExtensionContext, node: Node): Promise<void> {
   if (!node?._specUrl) return;
   let res: ResolveResult;
@@ -242,11 +300,11 @@ async function openOperation(context: vscode.ExtensionContext, node: Node): Prom
       : node._kind === "endpoint" && node._tag && node._path && node._method
         ? { kind: "operation", tag: node._tag, operationId: node._operationId, method: node._method, path: node._path }
         : undefined;
-  const httpOptions = await buildHttpOptions(context);
+  const httpOptions = await buildHttpOptions(context, res.specUrl);
   openSwaggerUi(context, res.spec, res.spec.info?.title || "Swagger UI", res.specUrl, httpOptions, focus);
 }
 
-// ---------------- 코드 생성 (트리 우클릭) ----------------
+// ---------------- Code generation (tree right-click) ----------------
 async function copyForNode(
   context: vscode.ExtensionContext,
   node: Node,
@@ -290,7 +348,7 @@ async function copyForNode(
   vscode.window.showInformationMessage(vscode.l10n.t("Copied {0} to clipboard.", label));
 }
 
-// 대상 스펙 선택 (트리 노드 인자 / 단일 / QuickPick)
+// Select the target spec (tree node argument / single / QuickPick)
 async function pickSpecUrl(arg?: Node): Promise<string | undefined> {
   if (arg?._specUrl) return arg._specUrl;
   const configs = getSpecConfigs();
@@ -368,7 +426,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!url) return;
       try {
         const res = await ensureSpec(context, url);
-        const httpOptions = await buildHttpOptions(context);
+        const httpOptions = await buildHttpOptions(context, res.specUrl);
         openSwaggerUi(context, res.spec, res.spec.info?.title || "Swagger UI", res.specUrl, httpOptions);
       } catch (e: any) {
         vscode.window.showErrorMessage(vscode.l10n.t("Failed to open Swagger UI: {0}", e?.message ?? String(e)));
@@ -402,7 +460,7 @@ export function activate(context: vscode.ExtensionContext): void {
             });
           }
         } catch {
-          /* 한 스펙 실패해도 나머지 검색 */
+          /* if one spec fails, keep searching the rest */
         }
       }
       const pick = await vscode.window.showQuickPick(items, {
@@ -433,6 +491,89 @@ export function activate(context: vscode.ExtensionContext): void {
       clearCache();
       provider.refresh();
       vscode.window.showInformationMessage(vscode.l10n.t("Authorization token cleared."));
+    }),
+
+    // Username/password for cases where accessing the URL itself requires a login (HTTP Basic auth, 401).
+    // Credentials are stored per host; the same pair can be applied to multiple hosts at once.
+    vscode.commands.registerCommand("swaggerViewer.setBasicAuth", async (arg?: Node) => {
+      let targets: string[];
+      if (arg?._specUrl) {
+        // Invoked from a spec node's context menu → target that host directly.
+        targets = [hostOf(arg._specUrl)];
+      } else {
+        const hosts = [...new Set(getSpecConfigs().map((c) => hostOf(c.url)))];
+        if (hosts.length === 0) {
+          vscode.window.showWarningMessage(vscode.l10n.t("No Swagger spec registered."));
+          return;
+        }
+        if (hosts.length === 1) {
+          targets = hosts;
+        } else {
+          const picked = await vscode.window.showQuickPick(
+            hosts.map((h) => ({ label: h })),
+            {
+              canPickMany: true,
+              placeHolder: vscode.l10n.t("Select the host(s) to apply these credentials to"),
+            }
+          );
+          if (!picked || picked.length === 0) return;
+          targets = picked.map((p) => p.label);
+        }
+      }
+      const username = await vscode.window.showInputBox({
+        prompt: vscode.l10n.t("Username for HTTP Basic auth (used when the spec URL requires a login)."),
+        ignoreFocusOut: true,
+      });
+      if (!username) return;
+      const password = await vscode.window.showInputBox({
+        prompt: vscode.l10n.t("Password for HTTP Basic auth."),
+        password: true,
+        ignoreFocusOut: true,
+      });
+      if (password === undefined) return;
+      const map = await readBasicAuthMap(context);
+      for (const host of targets) map[host] = { username, password };
+      await writeBasicAuthMap(context, map);
+      specCache.clear();
+      clearCache();
+      provider.refresh();
+      vscode.window.showInformationMessage(
+        vscode.l10n.t("Username & password saved for: {0}", targets.join(", "))
+      );
+    }),
+
+    vscode.commands.registerCommand("swaggerViewer.clearBasicAuth", async (arg?: Node) => {
+      const map = await readBasicAuthMap(context);
+      const hosts = Object.keys(map);
+      if (hosts.length === 0) {
+        vscode.window.showInformationMessage(vscode.l10n.t("No saved username & password to clear."));
+        return;
+      }
+      let targets: string[];
+      if (arg?._specUrl) {
+        // Invoked from a spec node's context menu → clear that host directly.
+        targets = [hostOf(arg._specUrl)];
+      } else if (hosts.length === 1) {
+        targets = hosts;
+      } else {
+        const picked = await vscode.window.showQuickPick(
+          hosts.map((h) => ({ label: h })),
+          {
+            canPickMany: true,
+            placeHolder: vscode.l10n.t("Select the host(s) to clear credentials for"),
+          }
+        );
+        if (!picked || picked.length === 0) return;
+        targets = picked.map((p) => p.label);
+      }
+      for (const host of targets) delete map[host];
+      await writeBasicAuthMap(context, map);
+      specCache.clear();
+      clearCache();
+      provider.refresh();
+      vscode.window.showInformationMessage(
+        vscode.l10n.t("Username & password cleared for: {0}", targets.join(", "))
+      );
     }),
 
     vscode.workspace.onDidChangeConfiguration((e) => {

@@ -1,7 +1,7 @@
-// Swagger UI 웹뷰 — 번들된 swagger-ui-dist 에셋으로 렌더(오프라인/방화벽 안전).
-// 스펙은 인라인(spec)으로 주입해 문서 로딩 시 CORS를 피하고,
-// "Try it out" 호출은 웹뷰의 fetch를 확장(node) 경유로 프록시해 CORS를 우회한다
-// (웹뷰 origin은 vscode-webview:// 라 cross-origin fetch가 CORS에 막혀 "Failed to fetch"가 난다).
+// Swagger UI webview — renders with bundled swagger-ui-dist assets (offline/firewall safe).
+// The spec is injected inline to avoid CORS when loading the document,
+// and "Try it out" calls proxy the webview's fetch through the extension (node) to bypass CORS
+// (the webview origin is vscode-webview://, so cross-origin fetch is blocked by CORS and yields "Failed to fetch").
 import * as vscode from "vscode";
 import { randomBytes } from "node:crypto";
 import { request as httpRequest, stripSensitiveHeaders, type HttpOptions } from "./http";
@@ -12,8 +12,8 @@ export type FocusTarget =
   | { kind: "model"; name: string };
 
 let panel: vscode.WebviewPanel | null = null;
-let currentBase = ""; // 현재 패널이 보고 있는 스펙 origin (다르면 새로 렌더)
-// 패널은 재사용되므로 최신 옵션(토큰/프록시/CA)을 모듈에 보관해 메시지 핸들러가 읽는다.
+let currentBase = ""; // spec origin the current panel is showing (re-render if different)
+// The panel is reused, so keep the latest options (token/proxy/CA) in the module for the message handler to read.
 let currentHttpOptions: HttpOptions = {};
 
 export function openSwaggerUi(
@@ -47,7 +47,7 @@ export function openSwaggerUi(
   const webview = panel.webview;
   panel.title = title;
 
-  // 같은 스펙이면 다시 그리지 않고 포커스만 이동(상태 유지). 다른 스펙이면 새로 렌더.
+  // Same spec: don't redraw, just move focus (preserve state). Different spec: re-render.
   if (isNew || base !== currentBase) {
     const asset = (f: string) => webview.asWebviewUri(vscode.Uri.joinPath(mediaRoot, f)).toString();
     const nonce = makeNonce();
@@ -66,12 +66,12 @@ export function openSwaggerUi(
   panel.reveal(vscode.ViewColumn.Beside, true);
 }
 
-// 웹뷰가 프록시한 fetch를 node에서 실행 → 결과를 돌려준다(CORS 우회 + 토큰/프록시/CA 적용).
+// Execute the webview's proxied fetch in node and return the result (CORS bypass + token/proxy/CA applied).
 async function handleMessage(msg: any): Promise<void> {
   if (!panel || msg?.type !== "swaggerFetch") return;
   const { id, url, method, headers, body } = msg;
   try {
-    // 토큰/쿠키는 스펙 origin과 같은 호스트로만 보낸다 (타 호스트로의 자격증명 유출 방지).
+    // Token/cookies are only sent to the same host as the spec origin (prevents credential leakage to other hosts).
     const sameOrigin = originOf(url) === currentBase;
     const baseHeaders = sameOrigin
       ? currentHttpOptions.headers
@@ -105,7 +105,7 @@ function originOf(url: string): string {
   }
 }
 
-// OpenAPI 3: servers 주입 / Swagger 2: host+schemes 주입 (없을 때만)
+// OpenAPI 3: inject servers / Swagger 2: inject host+schemes (only when missing)
 function ensureServers(spec: OpenApiSpec, baseUrl: string): OpenApiSpec {
   let u: URL;
   try {
@@ -152,7 +152,7 @@ function render(
     const vscode = acquireVsCodeApi();
     const extraHeaders = ${headersJson};
 
-    // Try it out 호출(임의 API origin)을 확장(node)으로 프록시해 CORS를 우회한다.
+    // Proxy Try it out calls (arbitrary API origin) through the extension (node) to bypass CORS.
     const origFetch = window.fetch.bind(window);
     const pending = new Map();
     let seq = 0;
@@ -193,7 +193,7 @@ function render(
       }
     });
 
-    // 트리에서 선택한 오퍼레이션/모델로 스크롤 + 펼치기 (렌더가 비동기라 잠시 폴링)
+    // Scroll to and expand the operation/model selected in the tree (poll briefly since rendering is async)
     function doFocus(focus) {
       if (!focus) return;
       let n = 0;

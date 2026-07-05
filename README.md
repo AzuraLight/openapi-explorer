@@ -11,7 +11,9 @@ tree plus an embedded Swagger UI — no more opening the docs page in Chrome.
 
 ## Features
 
-- **Sidebar tree** — tags → endpoints, plus a `Models` node for DTOs. Method-colored icons.
+- **Sidebar tree** — each registered gateway is a top-level node (its address is shown, and
+  credentials are managed from its right-click menu) → tags → endpoints, plus a `Models` node
+  for DTOs. Method-colored icons.
 - **Jump to Swagger UI** — click an endpoint or model and the embedded Swagger UI opens
   _beside_ your code (deep-link + scroll), without stealing focus (`preserveFocus`).
 - **Try it out (via the extension)** — requests are sent from the extension host (Node),
@@ -35,6 +37,13 @@ tree plus an embedded Swagger UI — no more opening the docs page in Chrome.
 
 For authenticated APIs, run **OpenAPI: Set Auth Token** — the token is stored in the OS
 keychain (SecretStorage) and sent as `Authorization: Bearer …`.
+
+If the spec URL itself is behind an HTTP Basic login (browser shows a username/password
+prompt, returns `401`), **right-click the gateway node in the tree → Set Username & Password**
+(or run the command from the palette). It is stored in SecretStorage and sent as
+`Authorization: Basic …`. Credentials are kept **per host** — the tree shows a 🔑 marker with
+the saved username, and the palette command can apply one pair to several gateways at once
+when they share a login.
 
 ## Configuration
 

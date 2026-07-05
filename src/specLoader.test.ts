@@ -15,7 +15,7 @@ test("candidateUrls excludes petstore default", () => {
   assert.equal(cands.length, 0);
 });
 
-// UI(HTML) → 후보 경로(-json)에서 실제 스펙을 찾아내는지
+// Whether it discovers the actual spec from a UI (HTML) page via candidate paths (-json)
 test("resolveSpec auto-discovers spec from UI page", async () => {
   clearCache();
   const specJson = JSON.stringify({ openapi: "3.0.0", info: { title: "X" }, paths: {} });

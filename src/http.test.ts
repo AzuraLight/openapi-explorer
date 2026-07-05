@@ -14,7 +14,7 @@ test("stripSensitiveHeaders removes auth/cookie case-insensitively, keeps others
   assert.deepEqual(out, { Accept: "application/json" });
 });
 
-// 테스트용 서버를 띄워 핸들러로 분기, 종료 함수를 돌려준다.
+// Start a test server that dispatches to the handler, and return a close function.
 function startServer(
   handler: (req: http.IncomingMessage, res: http.ServerResponse) => void
 ): Promise<{ port: number; close: () => Promise<void> }> {
@@ -28,11 +28,11 @@ function startServer(
 }
 
 test("cross-origin redirect drops Authorization header", async () => {
-  // 목적지 서버: 받은 authorization 헤더를 그대로 본문에 echo
+  // Destination server: echoes the received authorization header straight into the body
   const dest = await startServer((req, res) => {
     res.end(JSON.stringify({ auth: req.headers["authorization"] ?? null }));
   });
-  // 출발 서버: 다른 포트(=다른 origin)인 dest로 302 리다이렉트
+  // Origin server: 302 redirects to dest on a different port (= different origin)
   const origin = await startServer((req, res) => {
     res.writeHead(302, { Location: `http://127.0.0.1:${dest.port}/echo` });
     res.end();
@@ -42,7 +42,7 @@ test("cross-origin redirect drops Authorization header", async () => {
       { headers: { Authorization: "Bearer secret" } },
       { method: "GET", url: `http://127.0.0.1:${origin.port}/start` }
     );
-    assert.equal(JSON.parse(r.body).auth, null, "토큰이 타 origin으로 전달되면 안 된다");
+    assert.equal(JSON.parse(r.body).auth, null, "token must not be forwarded to a different origin");
   } finally {
     await origin.close();
     await dest.close();
@@ -63,7 +63,7 @@ test("same-origin redirect keeps Authorization header", async () => {
       { headers: { Authorization: "Bearer secret" } },
       { method: "GET", url: `http://127.0.0.1:${srv.port}/start` }
     );
-    assert.equal(JSON.parse(r.body).auth, "Bearer secret", "동일 origin 리다이렉트는 토큰 유지");
+    assert.equal(JSON.parse(r.body).auth, "Bearer secret", "same-origin redirect keeps the token");
   } finally {
     await srv.close();
   }

@@ -12,7 +12,7 @@ import {
 } from "./model";
 import type { OpenApiSpec } from "./types";
 
-// 래퍼 응답({ success, data: Dto })을 가진 미니 스펙
+// Mini spec with an envelope response ({ success, data: Dto })
 const spec: OpenApiSpec = {
   openapi: "3.0.0",
   info: { title: "Test", version: "1.0" },
@@ -20,7 +20,7 @@ const spec: OpenApiSpec = {
     "/learners/{id}": {
       get: {
         tags: ["learners"],
-        summary: "학습자 상세",
+        summary: "Learner detail",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         responses: {
           "200": {
@@ -41,7 +41,7 @@ const spec: OpenApiSpec = {
       },
     },
     "/learners": {
-      get: { tags: ["learners"], summary: "리스트", responses: { "200": { description: "ok" } } },
+      get: { tags: ["learners"], summary: "List", responses: { "200": { description: "ok" } } },
     },
   },
   components: {
@@ -78,7 +78,7 @@ test("endpointDetail extracts params and response schema (envelope)", () => {
 test("modelDetail lists fields with required flag", () => {
   const m = modelDetail(spec, "LearnerDto")!;
   assert.equal(m.fields.find((f) => f.name === "id")?.required, true);
-  // shortType은 스펙 원형(integer)을 보여준다 (TS 생성기만 number로 정규화)
+  // shortType shows the original spec type (integer) (only the TS generator normalizes to number)
   assert.equal(m.fields.find((f) => f.name === "count")?.type, "integer");
 });
 

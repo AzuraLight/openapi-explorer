@@ -1,5 +1,5 @@
-// 네트워크 레이어 — 사내 프록시 / 사설 CA / strictSSL / 인증 헤더 지원.
-// vscode 모듈을 import 하지 않아 단위 테스트가 가능하다(옵션은 호출측에서 주입).
+// Network layer — supports corporate proxy / private CA / strictSSL / auth headers.
+// Does not import the vscode module so it can be unit tested (options are injected by the caller).
 import * as https from "node:https";
 import * as http from "node:http";
 import * as fs from "node:fs";
@@ -11,7 +11,7 @@ export interface HttpOptions {
   headers?: Record<string, string>;
   strictSSL?: boolean;
   caCertPath?: string;
-  proxy?: string; // 빈 값이면 환경변수(HTTPS_PROXY/HTTP_PROXY) 사용
+  proxy?: string; // if empty, use environment variables (HTTPS_PROXY/HTTP_PROXY)
   timeoutMs?: number;
 }
 
@@ -32,9 +32,9 @@ export interface RequestResult {
 }
 
 const DEFAULT_TIMEOUT = 20_000;
-const MAX_BODY_BYTES = 25 * 1024 * 1024; // 응답 본문 상한 (메모리 보호)
+const MAX_BODY_BYTES = 25 * 1024 * 1024; // response body limit (memory protection)
 
-// 다른 origin으로 리다이렉트될 때 따라가면 안 되는 민감 헤더 (브라우저 fetch 표준과 동일).
+// Sensitive headers that must not be forwarded when redirecting to a different origin (same as the browser fetch standard).
 const SENSITIVE_HEADERS = /^(authorization|cookie|proxy-authorization)$/i;
 
 export function stripSensitiveHeaders(headers?: Record<string, string>): Record<string, string> | undefined {
@@ -62,7 +62,7 @@ function loadCa(caCertPath?: string): Buffer | undefined {
   }
 }
 
-// 임의 메서드/바디 요청 (확장 경유 실행 = CORS 우회). 리다이렉트 최대 5회 수동 추적.
+// Arbitrary method/body request (executed via the extension = CORS bypass). Manually follows up to 5 redirects.
 export function request(opts: HttpOptions, input: RequestInput, redirectsLeft = 5): Promise<RequestResult> {
   const ca = loadCa(opts.caCertPath);
   const rejectUnauthorized = opts.strictSSL !== false;
@@ -74,7 +74,7 @@ export function request(opts: HttpOptions, input: RequestInput, redirectsLeft = 
     try {
       target = new URL(input.url);
     } catch {
-      reject(new Error(`잘못된 URL: ${input.url}`));
+      reject(new Error(`Invalid URL: ${input.url}`));
       return;
     }
     const isHttps = target.protocol === "https:";
@@ -100,7 +100,7 @@ export function request(opts: HttpOptions, input: RequestInput, redirectsLeft = 
       if (status >= 300 && status < 400 && res.headers.location && redirectsLeft > 0) {
         res.resume();
         const nextUrl = new URL(res.headers.location, target);
-        // 크로스-오리진 리다이렉트면 인증/쿠키 헤더를 제거해 토큰 유출을 막는다.
+        // For cross-origin redirects, strip auth/cookie headers to prevent token leakage.
         const crossOrigin = nextUrl.origin !== target.origin;
         const nextOpts = crossOrigin ? { ...opts, headers: stripSensitiveHeaders(opts.headers) } : opts;
         const nextInput = crossOrigin
@@ -119,7 +119,7 @@ export function request(opts: HttpOptions, input: RequestInput, redirectsLeft = 
       res.on("data", (c) => {
         received += c.length;
         if (received > MAX_BODY_BYTES) {
-          req.destroy(new Error(`응답이 너무 큽니다(>${MAX_BODY_BYTES} bytes): ${input.url}`));
+          req.destroy(new Error(`Response too large (>${MAX_BODY_BYTES} bytes): ${input.url}`));
           return;
         }
         chunks.push(c);
@@ -135,14 +135,14 @@ export function request(opts: HttpOptions, input: RequestInput, redirectsLeft = 
         })
       );
     });
-    req.setTimeout(timeout, () => req.destroy(new Error(`요청 시간 초과(${timeout}ms): ${input.url}`)));
+    req.setTimeout(timeout, () => req.destroy(new Error(`Request timed out (${timeout}ms): ${input.url}`)));
     req.on("error", reject);
     if (bodyBuf) req.write(bodyBuf);
     req.end();
   });
 }
 
-// 스펙 로더용 GET fetcher (request 위에 얇게)
+// GET fetcher for the spec loader (a thin wrapper over request)
 export function createHttpFetcher(opts: HttpOptions = {}): Fetcher {
   return async (rawUrl: string): Promise<HttpResponse> => {
     const r = await request(opts, { method: "GET", url: rawUrl });
