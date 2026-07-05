@@ -14,5 +14,12 @@
   "Search endpoints (method/path/summary)": "엔드포인트 검색 (메서드/경로/요약)",
   "Authorization token (Bearer). Stored securely in SecretStorage.": "Authorization 토큰 (Bearer). SecretStorage에 안전하게 저장됩니다.",
   "Authorization token saved.": "인증 토큰을 저장했습니다.",
-  "Authorization token cleared.": "인증 토큰을 삭제했습니다."
+  "Authorization token cleared.": "인증 토큰을 삭제했습니다.",
+  "Username for HTTP Basic auth (used when the spec URL requires a login).": "HTTP Basic 인증 아이디 (스펙 URL 접근에 로그인이 필요할 때 사용).",
+  "Password for HTTP Basic auth.": "HTTP Basic 인증 비밀번호.",
+  "Select the host(s) to apply these credentials to": "이 자격증명을 적용할 호스트를 선택하세요",
+  "Select the host(s) to clear credentials for": "자격증명을 삭제할 호스트를 선택하세요",
+  "No saved username & password to clear.": "삭제할 아이디/비밀번호가 없습니다.",
+  "Username & password saved for: {0}": "아이디/비밀번호를 저장했습니다: {0}",
+  "Username & password cleared for: {0}": "아이디/비밀번호를 삭제했습니다: {0}"
 }

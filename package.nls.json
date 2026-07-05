@@ -8,6 +8,8 @@
   "cmd.openInBrowser": "Open in Browser",
   "cmd.setToken": "Set Auth Token",
   "cmd.clearToken": "Clear Auth Token",
+  "cmd.setBasicAuth": "Set Username & Password",
+  "cmd.clearBasicAuth": "Clear Username & Password",
   "cmd.openSwaggerUI": "Open Swagger UI",
   "cmd.search": "Search Endpoints",
   "cmd.addSpec": "Add Spec (Gateway)",

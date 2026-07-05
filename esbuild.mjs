@@ -11,7 +11,7 @@ const options = {
   platform: "node",
   target: "node18",
   outfile: "dist/extension.js",
-  // vscode 모듈은 런타임이 주입하므로 번들 제외. 나머지(https-proxy-agent 등)는 번들에 포함.
+  // The vscode module is injected by the runtime, so exclude it from the bundle. Everything else (https-proxy-agent, etc.) is bundled.
   external: ["vscode"],
   sourcemap: !production,
   minify: production,

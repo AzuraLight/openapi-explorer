@@ -1,4 +1,4 @@
-// swagger-ui-dist 에셋을 media/swagger-ui/ 로 복사 (CDN 대신 번들 → 오프라인/방화벽 안전).
+// Copy swagger-ui-dist assets to media/swagger-ui/ (bundle instead of CDN → offline/firewall safe).
 import { copyFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -11,6 +11,6 @@ mkdirSync(dest, { recursive: true });
 const assets = ["swagger-ui.css", "swagger-ui-bundle.js", "swagger-ui-standalone-preset.js"];
 for (const a of assets) {
   copyFileSync(join(src, a), join(dest, a));
-  console.log(`복사: media/swagger-ui/${a}`);
+  console.log(`Copied: media/swagger-ui/${a}`);
 }
-console.log("Swagger UI 에셋 번들 완료");
+console.log("Swagger UI assets bundled");

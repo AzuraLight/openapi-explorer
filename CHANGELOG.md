@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-07-03
+
+### Added
+
+- **HTTP Basic auth** — for specs whose URL itself requires a login (returns `401`). New commands **OpenAPI: Set Username & Password** / **Clear Username & Password** store credentials in SecretStorage and send them as `Authorization: Basic …` when fetching the spec and for Try-it-out. Credential precedence: custom `Authorization` header > Bearer token > Basic.
+- **Per-host credentials, managed from the tree** — Basic credentials are keyed by host, so multiple registered gateways can each have their own login. Right-click a gateway node to **Set/Clear Username & Password** for that host directly, and the node shows a 🔑 marker with the saved username. The palette command still lets you apply one pair to multiple hosts at once (multi-select) for gateways that share a login.
+- Clearer error when a spec URL returns `401`/`403`: the tree now hints to set a username & password instead of a generic "spec not found".
+
 ## [1.0.0] - 2026-06-26
 
 First public release.
