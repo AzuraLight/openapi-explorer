@@ -45,3 +45,14 @@ test("resolveSpec uses spec URL directly when JSON returned", async () => {
   const res = await resolveSpec("https://gw.example.com/v3/api-docs", { fetcher });
   assert.equal(res.specUrl, "https://gw.example.com/v3/api-docs");
 });
+
+// E2: a UTF-8 BOM before the JSON must not break parsing
+test("resolveSpec accepts JSON with a UTF-8 BOM", async () => {
+  clearCache();
+  const fetcher: Fetcher = async (url) =>
+    url === "https://bom.example.com/v3/api-docs"
+      ? { ok: true, status: 200, contentType: "application/json", body: '﻿{"openapi":"3.0.0","paths":{}}' }
+      : { ok: false, status: 404, contentType: "", body: "" };
+  const r = await resolveSpec("https://bom.example.com/v3/api-docs", { fetcher });
+  assert.equal(r.specUrl, "https://bom.example.com/v3/api-docs");
+});

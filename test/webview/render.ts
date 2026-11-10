@@ -5,7 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { Page } from "@playwright/test";
 import { fakeVscode, makeContext } from "../helpers/harness";
-import { openSwaggerUi } from "../../src/swaggerUi";
+import { openSwaggerUi, type FocusTarget } from "../../src/swaggerUi";
 import type { OpenApiSpec } from "../../src/types";
 
 export interface Rendered {
@@ -17,11 +17,12 @@ export interface Rendered {
 export function renderWebview(
   spec: OpenApiSpec,
   specUrl: string,
-  headers: Record<string, string> = {}
+  headers: Record<string, string> = {},
+  focus?: FocusTarget
 ): Rendered {
   fakeVscode.__reset();
   const { context } = makeContext();
-  openSwaggerUi(context, spec, spec.info?.title || "t", specUrl, { headers });
+  openSwaggerUi(context, spec, spec.info?.title || "t", specUrl, { headers }, focus);
   const rec = fakeVscode.__rec;
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "oae-webview-")), "index.html");
   fs.writeFileSync(file, rec.htmlSets[rec.htmlSets.length - 1]);

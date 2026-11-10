@@ -35,8 +35,9 @@ tree plus an embedded Swagger UI — no more opening the docs page in Chrome.
 2. Browse the tree, or hit **OpenAPI: Search Endpoints** (`Cmd/Ctrl+Alt+/`).
 3. Click an endpoint to open it in Swagger UI; right-click for code generation.
 
-For authenticated APIs, run **OpenAPI: Set Auth Token** — the token is stored in the OS
-keychain (SecretStorage) and sent as `Authorization: Bearer …`.
+For authenticated APIs, **right-click the gateway node → Set Auth Token** (or run
+**OpenAPI: Set Auth Token** and pick the host(s)). The token is stored per host in the OS keychain
+(SecretStorage) and sent as `Authorization: Bearer …` only to that host.
 
 If the spec URL itself is behind an HTTP Basic login (browser shows a username/password
 prompt, returns `401`), **right-click the gateway node in the tree → Set Username & Password**
@@ -60,7 +61,13 @@ when they share a login.
 
 ## Security notes
 
-- The auth token is stored in the OS keychain (VS Code SecretStorage), never in settings files.
+- Tokens and passwords are stored per host in the OS keychain (VS Code SecretStorage), never in
+  settings files, and are only sent to the host they were saved for.
+- Upgrading from 1.1.0 or earlier: the old global token is moved to your registered host if there is
+  exactly one. With several hosts you are asked which host(s) it belongs to, and it is not sent until
+  you choose.
+- An `Authorization` header you put in `swaggerViewer.headers` is sent to **every** host. Prefer the
+  per-host token command for credentials.
 - Credentials (`Authorization` / `Cookie`) are **dropped on cross-origin redirects** and are
   only sent to the spec's own origin, so a malicious `servers` entry cannot exfiltrate a token.
 - `strictSSL: false` is a temporary escape hatch for private-certificate environments — prefer

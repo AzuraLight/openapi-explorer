@@ -12,7 +12,8 @@ export type FocusTarget =
   | { kind: "model"; name: string };
 
 let panel: vscode.WebviewPanel | null = null;
-let currentBase = ""; // spec origin the current panel is showing (re-render if different)
+let currentSpecUrl = ""; // spec the current panel is showing (re-render if different)
+let currentBase = ""; // that spec's origin — credentials are only sent to this origin
 // The panel is reused, so keep the latest options (token/proxy/CA) in the module for the message handler to read.
 let currentHttpOptions: HttpOptions = {};
 
@@ -39,6 +40,7 @@ export function openSwaggerUi(
     );
     panel.onDidDispose(() => {
       panel = null;
+      currentSpecUrl = "";
       currentBase = "";
     });
     panel.webview.onDidReceiveMessage((msg) => handleMessage(msg));
@@ -47,8 +49,9 @@ export function openSwaggerUi(
   const webview = panel.webview;
   panel.title = title;
 
-  // Same spec: don't redraw, just move focus (preserve state). Different spec: re-render.
-  if (isNew || base !== currentBase) {
+  // Same spec: don't redraw, just move focus (preserve state). Different spec — even on the
+  // same origin, e.g. two services behind one gateway — re-render.
+  if (isNew || baseUrl !== currentSpecUrl) {
     const asset = (f: string) => webview.asWebviewUri(vscode.Uri.joinPath(mediaRoot, f)).toString();
     const nonce = makeNonce();
     const csp =
@@ -58,6 +61,7 @@ export function openSwaggerUi(
       `img-src ${webview.cspSource} data:; ` +
       `font-src ${webview.cspSource};`;
     webview.html = render(asset, csp, nonce, specWithServers, httpOptions.headers || {}, focus);
+    currentSpecUrl = baseUrl;
     currentBase = base;
   } else if (focus) {
     webview.postMessage({ type: "focus", focus });
@@ -69,7 +73,8 @@ export function openSwaggerUi(
 // Execute the webview's proxied fetch in node and return the result (CORS bypass + token/proxy/CA applied).
 async function handleMessage(msg: any): Promise<void> {
   if (!panel || msg?.type !== "swaggerFetch") return;
-  const { id, url, method, headers, body } = msg;
+  // body: text body; bodyBase64: binary/multipart body serialized by the webview.
+  const { id, url, method, headers, body, bodyBase64 } = msg;
   try {
     // Token/cookies are only sent to the same host as the spec origin (prevents credential leakage to other hosts).
     const sameOrigin = originOf(url) === currentBase;
@@ -79,7 +84,11 @@ async function handleMessage(msg: any): Promise<void> {
     const reqHeaders = sameOrigin ? headers || {} : stripSensitiveHeaders(headers || {});
     const result = await httpRequest(
       { ...currentHttpOptions, headers: { ...baseHeaders, ...reqHeaders } },
-      { method: method || "GET", url, body: body || undefined }
+      {
+        method: method || "GET",
+        url,
+        body: typeof bodyBase64 === "string" ? Buffer.from(bodyBase64, "base64") : body || undefined,
+      }
     );
     const safeHeaders = { ...result.headers };
     for (const k of Object.keys(safeHeaders)) {
@@ -90,7 +99,7 @@ async function handleMessage(msg: any): Promise<void> {
       id,
       status: result.status,
       headers: safeHeaders,
-      body: result.body,
+      bodyBase64: result.bodyBytes.toString("base64"), // binary-safe; decoded in the webview
     });
   } catch (e: any) {
     panel.webview.postMessage({ type: "swaggerFetchResult", id, error: e?.message ?? String(e) });
@@ -170,13 +179,47 @@ function render(
       };
       collect(req.headers);
       collect(init && init.headers);
-      const body = init && init.body != null ? String(init.body) : undefined;
       const id = ++seq;
-      return new Promise((resolve, reject) => {
-        pending.set(id, { resolve, reject, url });
-        vscode.postMessage({ type: "swaggerFetch", id, url, method, headers, body });
-      });
+      return serializeBody(input, init, method, headers).then(
+        (body) =>
+          new Promise((resolve, reject) => {
+            pending.set(id, { resolve, reject, url });
+            vscode.postMessage(Object.assign({ type: "swaggerFetch", id, url, method, headers }, body));
+          })
+      );
     };
+
+    // Text bodies go as-is. FormData/Blob/URLSearchParams/binary bodies are serialized by the
+    // browser itself (new Request) — which also yields the multipart boundary — and sent as base64.
+    async function serializeBody(input, init, method, headers) {
+      const raw = init && init.body != null ? init.body : null;
+      if (raw == null && !(input instanceof Request)) return {};
+      if (typeof raw === "string") return { body: raw };
+      if (/^(GET|HEAD)$/i.test(method)) return {};
+      const req = new Request(input instanceof Request ? input : "http://localhost/", { method, body: raw });
+      const bytes = new Uint8Array(await req.arrayBuffer());
+      const type = req.headers.get("content-type");
+      // For FormData the browser-generated type carries the boundary and must win.
+      if (type && (raw instanceof FormData || !hasHeader(headers, "content-type"))) {
+        for (const k of Object.keys(headers)) if (k.toLowerCase() === "content-type") delete headers[k];
+        headers["Content-Type"] = type;
+      }
+      return bytes.length ? { bodyBase64: toBase64(bytes) } : {};
+    }
+    function hasHeader(h, name) {
+      return Object.keys(h).some((k) => k.toLowerCase() === name);
+    }
+    function toBase64(bytes) {
+      let s = "";
+      for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      return btoa(s);
+    }
+    function fromBase64(b64) {
+      const s = atob(b64 || "");
+      const out = new Uint8Array(s.length);
+      for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+      return out;
+    }
 
     window.addEventListener("message", (e) => {
       const m = e.data || {};
@@ -185,13 +228,27 @@ function render(
         if (!p) return;
         pending.delete(m.id);
         if (m.error) { p.reject(new TypeError(m.error)); return; }
-        const resp = new Response(m.body, { status: m.status, headers: m.headers || {} });
+        // Null-body statuses must not be given a body (the Response constructor throws).
+        const nullBody = [101, 204, 205, 304].includes(m.status);
+        const resp = new Response(nullBody ? null : fromBase64(m.bodyBase64), { status: m.status, headers: m.headers || {} });
         try { Object.defineProperty(resp, "url", { value: p.url }); } catch (_) {}
         p.resolve(resp);
       } else if (m.type === "focus") {
         doFocus(m.focus);
       }
     });
+
+    // DOM ids as Swagger UI builds them (swagger-ui 5.x; verified against the bundled 5.32.6):
+    //   id = escapeDeepLinkPath(["operations", tag, operationId].join("-"))
+    //   operationId: as written in the spec; when absent, method + path with \\W → "_"
+    //   escapeDeepLinkPath: trim, whitespace → "_", then CSS.escape
+    function swaggerOpId(f) {
+      if (f.operationId && f.operationId.replace(/\\s/g, "").length) return f.operationId;
+      return f.method.toLowerCase() + f.path.replace(/\\W/g, "_");
+    }
+    function escapeDeepLinkPath(s) {
+      return CSS.escape(String(s).trim().replace(/\\s/g, "_"));
+    }
 
     // Scroll to and expand the operation/model selected in the tree (poll briefly since rendering is async)
     function doFocus(focus) {
@@ -201,16 +258,16 @@ function render(
         n++;
         let el = null;
         if (focus.kind === "operation") {
-          el = document.getElementById("operations-" + focus.tag + "-" + focus.operationId)
-            || document.getElementById("operations-" + focus.tag + "-" + focus.method + focus.path);
+          el = document.getElementById(escapeDeepLinkPath(["operations", focus.tag, swaggerOpId(focus)].join("-")));
         } else if (focus.kind === "model") {
           el = document.getElementById("model-" + focus.name);
         }
         if (el) {
           clearInterval(timer);
           if (focus.kind === "operation" && !el.classList.contains("is-open")) {
-            const sum = el.querySelector(".opblock-summary");
-            if (sum) sum.click();
+            // swagger-ui 5 toggles on this button; the .opblock-summary container has no handler.
+            const ctl = el.querySelector(".opblock-summary-control");
+            if (ctl) ctl.click();
           }
           el.scrollIntoView({ behavior: "smooth", block: "start" });
         } else if (n > 25) {

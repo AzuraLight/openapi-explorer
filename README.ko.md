@@ -32,8 +32,9 @@
 2. 트리를 탐색하거나 **OpenAPI: 엔드포인트 검색**(`Cmd/Ctrl+Alt+/`)을 사용합니다.
 3. 엔드포인트를 클릭해 Swagger UI에서 열고, 우클릭으로 코드를 생성합니다.
 
-인증이 필요한 API는 **OpenAPI: 인증 토큰 설정** 을 실행하세요. 토큰은 OS 키체인(SecretStorage)에
-저장되어 `Authorization: Bearer …` 로 전송됩니다.
+인증이 필요한 API는 **트리의 게이트웨이 노드 우클릭 → 인증 토큰 설정**을 실행하세요
+(또는 **OpenAPI: 인증 토큰 설정** 후 호스트 선택). 토큰은 호스트별로 OS 키체인(SecretStorage)에
+저장되고, 그 호스트에만 `Authorization: Bearer …` 로 전송됩니다.
 
 스펙 URL 접근 자체에 로그인이 필요한 경우(브라우저가 아이디/비밀번호를 묻고 `401` 반환 — HTTP Basic 인증)엔
 트리의 **게이트웨이 노드를 우클릭 → 아이디/비밀번호 설정**(또는 팔레트 명령)을 실행하세요.
@@ -55,7 +56,12 @@ SecretStorage에 저장되어 `Authorization: Basic …` 으로 전송됩니다.
 
 ## 보안 메모
 
-- 인증 토큰은 설정 파일이 아니라 OS 키체인(VS Code SecretStorage)에 저장됩니다.
+- 토큰과 비밀번호는 설정 파일이 아니라 OS 키체인(VS Code SecretStorage)에 호스트별로 저장되고,
+  저장한 그 호스트에만 전송됩니다.
+- 1.1.0 이하에서 올리는 경우: 예전 전역 토큰은 등록된 호스트가 하나뿐이면 그 호스트로 옮겨집니다.
+  여러 개면 어느 호스트용인지 묻고, 고르기 전에는 보내지 않습니다.
+- `swaggerViewer.headers` 에 직접 넣은 `Authorization` 헤더는 **모든** 호스트로 전송됩니다.
+  자격 증명은 호스트별 토큰 명령을 쓰세요.
 - 자격증명(`Authorization`/`Cookie`)은 **크로스-오리진 리다이렉트 시 제거**되고, 스펙 origin과
   동일 호스트로만 전송됩니다 → 악의적 `servers` 항목으로 토큰이 유출되지 않습니다.
 - `strictSSL: false`는 사설 인증서 환경의 임시 우회용입니다. 가능하면 `caCertPath`로 CA를 지정하세요.

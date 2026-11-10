@@ -13,8 +13,11 @@ import {
 import { openSwaggerUi, type FocusTarget } from "./swaggerUi";
 import { createHttpFetcher, type HttpOptions } from "./http";
 
-const SECRET_TOKEN_KEY = "swaggerViewer.authToken";
-const SECRET_BASIC_KEY = "swaggerViewer.basicAuth";
+// Credentials are stored per host (like npm/git/gh) so a credential is only ever sent to its own host.
+const SECRET_TOKEN_KEY = "swaggerViewer.bearerTokens"; // { [host]: token }
+const SECRET_BASIC_KEY = "swaggerViewer.basicAuth"; // { [host]: { username, password } }
+// ≤1.1.0 stored a single global token here; migrated by migrateLegacyToken().
+const LEGACY_TOKEN_KEY = "swaggerViewer.authToken";
 
 interface SpecConfig {
   name: string;
@@ -57,57 +60,108 @@ interface BasicCredential {
 
 // Configured headers + SecretStorage credentials → request headers.
 // Priority: custom Authorization header > Bearer token > Basic (username/password).
-// Basic credentials are per-host; targetUrl selects which host's credential applies.
+// Token and Basic credentials are per-host; targetUrl selects which host's credential applies.
+// Without a targetUrl no stored credential is attached.
 async function buildHeaders(
   context: vscode.ExtensionContext,
   targetUrl?: string
 ): Promise<Record<string, string>> {
   const cfg = vscode.workspace.getConfiguration("swaggerViewer");
   const headers: Record<string, string> = { ...(cfg.get<Record<string, string>>("headers") || {}) };
-  if (!headers["Authorization"]) {
-    const token = await context.secrets.get(SECRET_TOKEN_KEY);
+  if (!headers["Authorization"] && targetUrl) {
+    const host = hostOf(targetUrl);
+    const token = (await readTokenMap(context))[host];
+    const basic = (await readBasicAuthMap(context))[host];
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
-    } else {
-      const basic = targetUrl ? await readBasicAuthForHost(context, hostOf(targetUrl)) : undefined;
-      if (basic) {
-        const encoded = Buffer.from(`${basic.username}:${basic.password}`).toString("base64");
-        headers["Authorization"] = `Basic ${encoded}`;
-      }
+    } else if (basic) {
+      const encoded = Buffer.from(`${basic.username}:${basic.password}`).toString("base64");
+      headers["Authorization"] = `Basic ${encoded}`;
     }
   }
   return headers;
 }
 
-// Stored as a { [host]: { username, password } } map in one SecretStorage entry.
-async function readBasicAuthMap(context: vscode.ExtensionContext): Promise<Record<string, BasicCredential>> {
-  const raw = await context.secrets.get(SECRET_BASIC_KEY);
+// A { [host]: value } map stored as JSON in one SecretStorage entry. Invalid entries are dropped.
+async function readHostMap<T>(
+  context: vscode.ExtensionContext,
+  key: string,
+  isValid: (v: unknown) => v is T
+): Promise<Record<string, T>> {
+  const raw = await context.secrets.get(key);
   if (!raw) return {};
   try {
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") return parsed as Record<string, BasicCredential>;
+    if (parsed && typeof parsed === "object") {
+      return Object.fromEntries(Object.entries(parsed).filter(([, v]) => isValid(v))) as Record<string, T>;
+    }
   } catch {
     /* ignore corrupted value */
   }
   return {};
 }
 
-async function readBasicAuthForHost(
-  context: vscode.ExtensionContext,
-  host: string
-): Promise<BasicCredential | undefined> {
-  const map = await readBasicAuthMap(context);
-  const cred = map[host];
-  if (cred && typeof cred.username === "string" && typeof cred.password === "string") return cred;
-  return undefined;
+async function writeHostMap(context: vscode.ExtensionContext, key: string, map: object): Promise<void> {
+  if (Object.keys(map).length === 0) await context.secrets.delete(key);
+  else await context.secrets.store(key, JSON.stringify(map));
 }
 
-async function writeBasicAuthMap(
-  context: vscode.ExtensionContext,
-  map: Record<string, BasicCredential>
-): Promise<void> {
-  if (Object.keys(map).length === 0) await context.secrets.delete(SECRET_BASIC_KEY);
-  else await context.secrets.store(SECRET_BASIC_KEY, JSON.stringify(map));
+const isBasic = (v: unknown): v is BasicCredential =>
+  !!v && typeof (v as BasicCredential).username === "string" && typeof (v as BasicCredential).password === "string";
+const isToken = (v: unknown): v is string => typeof v === "string" && v.length > 0;
+
+const readBasicAuthMap = (c: vscode.ExtensionContext) => readHostMap(c, SECRET_BASIC_KEY, isBasic);
+const writeBasicAuthMap = (c: vscode.ExtensionContext, m: Record<string, BasicCredential>) =>
+  writeHostMap(c, SECRET_BASIC_KEY, m);
+const readTokenMap = (c: vscode.ExtensionContext) => readHostMap(c, SECRET_TOKEN_KEY, isToken);
+const writeTokenMap = (c: vscode.ExtensionContext, m: Record<string, string>) => writeHostMap(c, SECRET_TOKEN_KEY, m);
+
+function registeredHosts(): string[] {
+  return [...new Set(getSpecConfigs().map((c) => hostOf(c.url)))];
+}
+
+// Hosts a credential command applies to: the clicked spec node's host, the only candidate,
+// or a multi-select pick. undefined = cancelled / nothing to do.
+async function pickHosts(arg: Node | undefined, candidates: string[], placeHolder: string): Promise<string[] | undefined> {
+  if (arg?._specUrl) return [hostOf(arg._specUrl)];
+  if (candidates.length === 0) return undefined;
+  if (candidates.length === 1) return candidates;
+  const picked = await vscode.window.showQuickPick(
+    candidates.map((h) => ({ label: h })),
+    { canPickMany: true, placeHolder }
+  );
+  if (!picked || picked.length === 0) return undefined;
+  return picked.map((p) => p.label);
+}
+
+// ≤1.1.0 kept one global token and sent it to every host. Never spread it silently:
+// with exactly one registered host it moves there; otherwise the user chooses the host(s),
+// and until then it is kept but not sent anywhere.
+async function migrateLegacyToken(context: vscode.ExtensionContext, onChange: () => void): Promise<void> {
+  const legacy = await context.secrets.get(LEGACY_TOKEN_KEY);
+  if (!legacy) return;
+  const hosts = registeredHosts();
+  if (hosts.length === 0) return;
+  let targets: string[] | undefined;
+  if (hosts.length === 1) {
+    targets = hosts;
+  } else {
+    const choose = vscode.l10n.t("Choose hosts");
+    const answer = await vscode.window.showInformationMessage(
+      vscode.l10n.t(
+        "Auth tokens are now saved per host. Choose which host(s) your saved token belongs to — until then it is not sent."
+      ),
+      choose
+    );
+    if (answer !== choose) return;
+    targets = await pickHosts(undefined, hosts, vscode.l10n.t("Select the host(s) to apply the saved token to"));
+    if (!targets) return;
+  }
+  const map = await readTokenMap(context);
+  for (const h of targets) if (!map[h]) map[h] = legacy;
+  await writeTokenMap(context, map);
+  await context.secrets.delete(LEGACY_TOKEN_KEY);
+  onChange();
 }
 
 async function buildHttpOptions(context: vscode.ExtensionContext, targetUrl?: string): Promise<HttpOptions> {
@@ -163,18 +217,25 @@ class SwaggerTreeProvider implements vscode.TreeDataProvider<Node> {
     if (!element) {
       // Always show each spec (gateway) as a top-level node so its address is visible
       // and credentials can be managed from its right-click menu.
-      const authMap = await readBasicAuthMap(this.context);
+      const basicMap = await readBasicAuthMap(this.context);
+      const tokenMap = await readTokenMap(this.context);
       return configs.map((c) => {
         const host = hostOf(c.url);
-        const cred = authMap[host];
+        const cred = basicMap[host];
+        const hasToken = !!tokenMap[host];
         const n: Node = new vscode.TreeItem(c.name, vscode.TreeItemCollapsibleState.Collapsed);
         const parts: string[] = [];
         if (c.name !== host) parts.push(host);
+        if (hasToken) parts.push("🔑 Bearer");
         if (cred) parts.push(`🔑 ${cred.username}`);
         n.description = parts.join(" · ") || undefined;
         n.iconPath = new vscode.ThemeIcon("server");
-        n.contextValue = cred ? "specAuthed" : "spec";
-        n.tooltip = cred ? `${c.url}\nBasic auth: ${cred.username}` : c.url;
+        // "spec" + flags; package.json menus match with `viewItem =~ /^spec/`, `/:token/`, `/:basic/`.
+        n.contextValue = `spec${hasToken ? ":token" : ""}${cred ? ":basic" : ""}`;
+        const tip = [c.url];
+        if (hasToken) tip.push("Bearer token");
+        if (cred) tip.push(`Basic auth: ${cred.username}`);
+        n.tooltip = tip.join("\n");
         n._specNode = true;
         n._specUrl = c.url;
         return n;
@@ -471,55 +532,65 @@ export function activate(context: vscode.ExtensionContext): void {
       if (pick) await openOperation(context, pick.node);
     }),
 
-    vscode.commands.registerCommand("swaggerViewer.setToken", async () => {
+    // Bearer token, stored per host. From a spec node → that host; from the palette → pick host(s).
+    vscode.commands.registerCommand("swaggerViewer.setToken", async (arg?: Node) => {
+      const hosts = registeredHosts();
+      if (!arg?._specUrl && hosts.length === 0) {
+        vscode.window.showWarningMessage(vscode.l10n.t("No Swagger spec registered."));
+        return;
+      }
+      const targets = await pickHosts(arg, hosts, vscode.l10n.t("Select the host(s) to apply this token to"));
+      if (!targets) return;
       const token = await vscode.window.showInputBox({
-        prompt: vscode.l10n.t("Authorization token (Bearer). Stored securely in SecretStorage."),
+        prompt: vscode.l10n.t("Authorization token (Bearer) for {0}. Stored securely in SecretStorage.", targets.join(", ")),
         password: true,
+        ignoreFocusOut: true,
         placeHolder: "eyJhbGci...",
       });
       if (!token) return;
-      await context.secrets.store(SECRET_TOKEN_KEY, token);
+      const map = await readTokenMap(context);
+      for (const host of targets) map[host] = token;
+      await writeTokenMap(context, map);
       specCache.clear();
       clearCache();
       provider.refresh();
-      vscode.window.showInformationMessage(vscode.l10n.t("Authorization token saved."));
+      vscode.window.showInformationMessage(vscode.l10n.t("Authorization token saved for: {0}", targets.join(", ")));
     }),
 
-    vscode.commands.registerCommand("swaggerViewer.clearToken", async () => {
-      await context.secrets.delete(SECRET_TOKEN_KEY);
+    vscode.commands.registerCommand("swaggerViewer.clearToken", async (arg?: Node) => {
+      const map = await readTokenMap(context);
+      const targets = await pickHosts(
+        arg,
+        Object.keys(map),
+        vscode.l10n.t("Select the host(s) to clear the token for")
+      );
+      if (!targets) {
+        if (!arg?._specUrl && Object.keys(map).length === 0)
+          vscode.window.showInformationMessage(vscode.l10n.t("No saved token to clear."));
+        return;
+      }
+      for (const host of targets) delete map[host];
+      await writeTokenMap(context, map);
       specCache.clear();
       clearCache();
       provider.refresh();
-      vscode.window.showInformationMessage(vscode.l10n.t("Authorization token cleared."));
+      vscode.window.showInformationMessage(vscode.l10n.t("Authorization token cleared for: {0}", targets.join(", ")));
     }),
 
     // Username/password for cases where accessing the URL itself requires a login (HTTP Basic auth, 401).
     // Credentials are stored per host; the same pair can be applied to multiple hosts at once.
     vscode.commands.registerCommand("swaggerViewer.setBasicAuth", async (arg?: Node) => {
-      let targets: string[];
-      if (arg?._specUrl) {
-        // Invoked from a spec node's context menu → target that host directly.
-        targets = [hostOf(arg._specUrl)];
-      } else {
-        const hosts = [...new Set(getSpecConfigs().map((c) => hostOf(c.url)))];
-        if (hosts.length === 0) {
-          vscode.window.showWarningMessage(vscode.l10n.t("No Swagger spec registered."));
-          return;
-        }
-        if (hosts.length === 1) {
-          targets = hosts;
-        } else {
-          const picked = await vscode.window.showQuickPick(
-            hosts.map((h) => ({ label: h })),
-            {
-              canPickMany: true,
-              placeHolder: vscode.l10n.t("Select the host(s) to apply these credentials to"),
-            }
-          );
-          if (!picked || picked.length === 0) return;
-          targets = picked.map((p) => p.label);
-        }
+      const hosts = registeredHosts();
+      if (!arg?._specUrl && hosts.length === 0) {
+        vscode.window.showWarningMessage(vscode.l10n.t("No Swagger spec registered."));
+        return;
       }
+      const targets = await pickHosts(
+        arg,
+        hosts,
+        vscode.l10n.t("Select the host(s) to apply these credentials to")
+      );
+      if (!targets) return;
       const username = await vscode.window.showInputBox({
         prompt: vscode.l10n.t("Username for HTTP Basic auth (used when the spec URL requires a login)."),
         ignoreFocusOut: true,
@@ -584,6 +655,13 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     })
   );
+
+  // Fire-and-forget: may wait on the user's choice, must not block activation.
+  migrateLegacyToken(context, () => {
+    specCache.clear();
+    clearCache();
+    provider.refresh();
+  }).catch((e) => console.error("[openapi-explorer] legacy token migration failed", e));
 }
 
 export function deactivate(): void {

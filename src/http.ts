@@ -19,14 +19,15 @@ export interface RequestInput {
   method: string;
   url: string;
   headers?: Record<string, string>;
-  body?: string;
+  body?: string | Buffer; // Buffer for binary/multipart bodies (sent as-is)
 }
 
 export interface RequestResult {
   status: number;
   contentType: string;
   headers: Record<string, string>;
-  body: string;
+  body: string; // utf8 decoding of bodyBytes (for text consumers such as the spec loader)
+  bodyBytes: Buffer; // raw response bytes (for binary-safe consumers such as Try it out)
   timeMs: number;
   finalUrl: string;
 }
@@ -92,7 +93,12 @@ export function request(opts: HttpOptions, input: RequestInput, redirectsLeft = 
       ...(opts.headers || {}),
       ...(input.headers || {}),
     };
-    const bodyBuf = input.body ? Buffer.from(input.body, "utf8") : undefined;
+    const bodyBuf =
+      input.body === undefined || input.body.length === 0
+        ? undefined
+        : Buffer.isBuffer(input.body)
+          ? input.body
+          : Buffer.from(input.body, "utf8");
     if (bodyBuf) headers["Content-Length"] = String(bodyBuf.length);
 
     const req = lib.request(target, { method: input.method.toUpperCase(), agent, headers }, (res) => {
@@ -124,16 +130,18 @@ export function request(opts: HttpOptions, input: RequestInput, redirectsLeft = 
         }
         chunks.push(c);
       });
-      res.on("end", () =>
+      res.on("end", () => {
+        const bodyBytes = Buffer.concat(chunks);
         resolve({
           status,
           contentType: String(res.headers["content-type"] || ""),
           headers: flatHeaders,
-          body: Buffer.concat(chunks).toString("utf8"),
+          body: bodyBytes.toString("utf8"),
+          bodyBytes,
           timeMs: Date.now() - started,
           finalUrl: target.href,
-        })
-      );
+        });
+      });
     });
     req.setTimeout(timeout, () => req.destroy(new Error(`Request timed out (${timeout}ms): ${input.url}`)));
     req.on("error", reject);
