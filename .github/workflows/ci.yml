@@ -19,6 +19,8 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:webview
       - run: npm run build
       - name: Package VSIX
         run: npx @vscode/vsce package --no-dependencies -o openapi-explorer-${{ github.sha }}.vsix
