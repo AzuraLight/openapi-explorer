@@ -33,7 +33,7 @@ test("cross-origin redirect drops Authorization header", async () => {
     res.end(JSON.stringify({ auth: req.headers["authorization"] ?? null }));
   });
   // Origin server: 302 redirects to dest on a different port (= different origin)
-  const origin = await startServer((req, res) => {
+  const origin = await startServer((_req, res) => {
     res.writeHead(302, { Location: `http://127.0.0.1:${dest.port}/echo` });
     res.end();
   });

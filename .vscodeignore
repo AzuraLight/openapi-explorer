@@ -4,6 +4,12 @@ src/**
 node_modules/**
 scripts/**
 **/*.test.ts
+test/**
+docs/**
+test-results/**
+playwright-report/**
+playwright.config.ts
+tsconfig.test.json
 **/*.map
 .github/**
 esbuild.mjs
