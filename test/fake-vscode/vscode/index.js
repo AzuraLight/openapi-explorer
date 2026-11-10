@@ -14,6 +14,12 @@ const fresh = () => ({
   msgs: [],
   answers: [],
   prompts: [],
+  // Settings per scope: `config` = workspace, `globalConfig` = user. get() merges workspace over user.
+  globalConfig: {},
+  clipboard: "",
+  selection: [], // TreeView.selection
+  revealed: [], // elements passed to TreeView.reveal
+  progress: [], // withProgress titles
 });
 const rec = (global.__rec = fresh());
 
@@ -95,13 +101,23 @@ function createWebviewPanel(_viewType, title) {
   return p;
 }
 
+const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 };
 const cfgGet = (section) => ({
   get: (k, d) => {
-    const v = rec.config[`${section}.${k}`];
+    const key = `${section}.${k}`;
+    const v = rec.config[key] !== undefined ? rec.config[key] : rec.globalConfig[key];
     return v === undefined ? d : v;
   },
-  update: async (k, v) => {
-    rec.config[`${section}.${k}`] = v;
+  inspect: (k) => {
+    const key = `${section}.${k}`;
+    return { key, globalValue: rec.globalConfig[key], workspaceValue: rec.config[key] };
+  },
+  // target: Global → user settings, otherwise workspace. undefined value removes the setting.
+  update: async (k, v, target) => {
+    const store = target === ConfigurationTarget.Global ? rec.globalConfig : rec.config;
+    const key = `${section}.${k}`;
+    if (v === undefined) delete store[key];
+    else store[key] = v;
   },
 });
 
@@ -115,13 +131,24 @@ module.exports = {
   Uri,
   TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
   ViewColumn: { Beside: -2 },
-  ConfigurationTarget: { Global: 1, Workspace: 2 },
+  ConfigurationTarget,
+  ProgressLocation: { SourceControl: 1, Window: 10, Notification: 15 },
   l10n: { t: (s, ...a) => s.replace(/\{(\d)\}/g, (_, i) => a[i]) },
   window: {
     createWebviewPanel,
     createTreeView: (_id, o) => {
       rec.treeProvider = o.treeDataProvider;
-      return { dispose() {} };
+      return {
+        get selection() {
+          return rec.selection;
+        },
+        reveal: async (el, opts) => void rec.revealed.push({ el, opts }),
+        dispose() {},
+      };
+    },
+    withProgress: async (options, task) => {
+      rec.progress.push(options.title);
+      return task({ report() {} }, { isCancellationRequested: false, onCancellationRequested() {} });
     },
     showInformationMessage: (m, ...items) => message("", m, items),
     showErrorMessage: (m, ...items) => message("ERR ", m, items),
@@ -149,5 +176,11 @@ module.exports = {
     onDidChangeConfiguration: () => ({ dispose() {} }),
     workspaceFolders: undefined,
   },
-  env: { clipboard: { writeText: async () => {} }, openExternal: () => {} },
+  env: {
+    clipboard: {
+      readText: async () => rec.clipboard,
+      writeText: async (t) => void (rec.clipboard = t),
+    },
+    openExternal: () => {},
+  },
 };

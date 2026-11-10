@@ -23,7 +23,8 @@ tree plus an embedded Swagger UI — no more opening the docs page in Chrome.
 - **Endpoint search palette** — fuzzy search by method / path / summary, then jump to it.
 - **Code generation** — right-click a tree item to copy the response type (TypeScript, with
   dependent models, JSDoc, and envelope unwrapping), a `fetch` / `axios` client function, or cURL.
-- **Multiple gateways** — register several specs in `swaggerViewer.specs` and switch per service.
+- **Multiple gateways, managed like Explorer folders** — ＋ / right-click **Add API**, **Rename**, **Edit URL**,
+  **Remove API**; stored in `swaggerViewer.specs`.
 - **UI URL auto-discovery** — paste a `.../api-docs` (Swagger UI page) URL and the real spec
   (`/api-docs-json`, `/v3/api-docs`, `-yaml`, …) is discovered automatically. springdoc groups
   (`/v3/api-docs/swagger-config`) appear as one node per group.
@@ -34,7 +35,9 @@ tree plus an embedded Swagger UI — no more opening the docs page in Chrome.
 
 ## Usage
 
-1. Run **OpenAPI: Set URL** and paste your spec or docs-page URL (`.../api-docs` works).
+1. Click **＋ Add API** in the OpenAPI view (or right-click an API → **Add API…**) and paste your spec or
+   docs-page URL (`.../api-docs` works). The URL is checked right away and the name is taken from the spec.
+   Right-click an API to **Rename** (`F2`), **Edit URL**, **Copy URL** or **Remove API** (`Delete` / `⌘⌫`).
 2. Browse the tree, or hit **OpenAPI: Search Endpoints** (`Cmd/Ctrl+Alt+/`).
 3. Click an endpoint to open it in Swagger UI; right-click for code generation.
 

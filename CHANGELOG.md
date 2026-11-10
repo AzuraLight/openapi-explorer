@@ -4,15 +4,26 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [1.2.0] - 2026-11-10
+## [1.2.0] - 2026-11-11
 
 ### Added
 
+- **Manage APIs like folders in the Explorer.** ＋ in the view title, or right-click an API → **Add API…**,
+  **Rename** (`F2`), **Edit URL…**, **Copy URL**, **Remove API** (`Delete` / `⌘⌫`). Adding takes the URL first
+  (prefilled from the clipboard, and the input stays open while you copy it), checks it right away, offers
+  **Save and Log In** when the URL needs a login, and prefills the name from the spec's title. Edits are
+  written back to the settings scope (workspace or user) that holds the entry.
 - **YAML specs.** Specs are parsed as JSON or YAML regardless of the content type. Discovery also
   tries the YAML paths of springdoc (`/v3/api-docs.yaml`) and NestJS (`/{path}-yaml`). YAML alias
   expansion is capped (`maxAliasCount: 100`), so alias bombs are rejected.
 - **springdoc groups.** When a Swagger UI page is backed by `/v3/api-docs/swagger-config` with
   `urls`, each group is shown as its own node under the gateway, and search covers every group.
+
+### Changed
+
+- **Set URL** and **Add Spec** are replaced by **Add API**. An existing `swaggerViewer.url` keeps working and is
+  now listed next to `swaggerViewer.specs` (it used to be hidden as soon as `specs` had an entry); it is
+  never rewritten automatically — renaming or editing it moves it into `specs`.
 
 ### Fixed
 
