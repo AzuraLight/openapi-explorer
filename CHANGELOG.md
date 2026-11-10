@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-11-10
+
+### Added
+
+- **YAML specs.** Specs are parsed as JSON or YAML regardless of the content type. Discovery also
+  tries the YAML paths of springdoc (`/v3/api-docs.yaml`) and NestJS (`/{path}-yaml`). YAML alias
+  expansion is capped (`maxAliasCount: 100`), so alias bombs are rejected.
+- **springdoc groups.** When a Swagger UI page is backed by `/v3/api-docs/swagger-config` with
+  `urls`, each group is shown as its own node under the gateway, and search covers every group.
+
+### Fixed
+
+- Path-level `parameters` now apply to every operation under the path; an operation parameter with
+  the same name and location overrides it.
+- Swagger 2.0: `in: body` and `in: formData` parameters become the request body (content type from
+  `consumes`), and `responses.*.schema` is used for the response type. Previously the body was
+  missing and the response type was `void`.
+- Base URLs: relative `servers` URLs are resolved against the spec URL, and server variables use
+  their defaults in generated code. Previously a server path such as `/api/v1` was dropped. Swagger UI
+  receives absolute server URLs and keeps `{variables}` so you can still pick their values.
+- `summary`/`description` next to a `$ref` override the referenced ones (OpenAPI 3.1).
+
 ## [1.1.1] - 2026-11-10
 
 ### Security
@@ -56,5 +78,6 @@ First public release.
 - Response bodies are capped (25 MB) to prevent memory pressure from huge responses.
 - Webview CSP narrowed (`img-src` no longer allows arbitrary `https:`).
 
+[1.2.0]: https://github.com/AzuraLight/openapi-explorer/releases/tag/v1.2.0
 [1.1.1]: https://github.com/AzuraLight/openapi-explorer/releases/tag/v1.1.1
 [1.0.0]: https://github.com/AzuraLight/openapi-explorer/releases/tag/v1.0.0

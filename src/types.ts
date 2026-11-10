@@ -3,8 +3,14 @@ export interface OpenApiSpec {
   openapi?: string;
   swagger?: string;
   info?: { title?: string; version?: string };
-  basePath?: string;
-  paths?: Record<string, Record<string, Operation>>;
+  basePath?: string; // Swagger 2
+  host?: string; // Swagger 2
+  schemes?: string[]; // Swagger 2
+  consumes?: string[]; // Swagger 2 (global)
+  produces?: string[]; // Swagger 2 (global)
+  servers?: { url?: string; variables?: Record<string, { default?: string }> }[]; // OpenAPI 3
+  // Path Item: operations by method, plus path-level `parameters` (and summary/description/servers).
+  paths?: Record<string, Record<string, any>>;
   components?: { schemas?: Record<string, Schema>; securitySchemes?: Record<string, unknown> };
   definitions?: Record<string, Schema>;
   securityDefinitions?: Record<string, unknown>;
@@ -16,6 +22,8 @@ export interface Operation {
   description?: string;
   operationId?: string;
   parameters?: Parameter[];
+  consumes?: string[]; // Swagger 2
+  produces?: string[]; // Swagger 2
   requestBody?: { required?: boolean; content?: Record<string, MediaType> };
   responses?: Record<string, ResponseObject>;
   [k: string]: unknown;
@@ -27,7 +35,11 @@ export interface Parameter {
   in?: string;
   required?: boolean;
   description?: string;
-  schema?: Schema;
+  schema?: Schema; // OpenAPI 3, and Swagger 2 `in: body`
+  type?: string; // Swagger 2 non-body parameters (incl. "file" for formData)
+  format?: string;
+  items?: Schema;
+  enum?: unknown[];
 }
 
 export interface MediaType {
@@ -37,7 +49,8 @@ export interface MediaType {
 export interface ResponseObject {
   $ref?: string;
   description?: string;
-  content?: Record<string, MediaType>;
+  content?: Record<string, MediaType>; // OpenAPI 3
+  schema?: Schema; // Swagger 2
 }
 
 export interface Schema {

@@ -310,6 +310,18 @@ class SwaggerTreeProvider implements vscode.TreeDataProvider<Node> {
       it.iconPath = new vscode.ThemeIcon("error");
       return [it];
     }
+    // springdoc groups: one node per group; each group node is itself a spec node for its own URL.
+    if (res.groups && res.groups.length > 1) {
+      return res.groups.map((g) => {
+        const n: Node = new vscode.TreeItem(g.name, vscode.TreeItemCollapsibleState.Collapsed);
+        n.iconPath = new vscode.ThemeIcon("folder-library");
+        n.contextValue = "group";
+        n.tooltip = g.url;
+        n._specNode = true;
+        n._specUrl = g.url;
+        return n;
+      });
+    }
     const spec = res.spec;
     const nodes: Node[] = [];
     for (const [tag, eps] of groupByTag(spec)) {
@@ -503,25 +515,31 @@ export function activate(context: vscode.ExtensionContext): void {
       const multi = configs.length > 1;
       const items: (vscode.QuickPickItem & { node: Node })[] = [];
       for (const c of configs) {
+        // A spec with springdoc groups is searched group by group.
+        let sources: { url: string; group?: string }[] = [{ url: c.url }];
         try {
           const res = await ensureSpec(context, c.url);
-          for (const e of listEndpoints(res.spec)) {
-            const node: Node = new vscode.TreeItem(`${e.method} ${e.path}`);
-            node._specUrl = c.url;
-            node._kind = "endpoint";
-            node._path = e.path;
-            node._method = e.method;
-            node._tag = e.tag;
-            node._operationId = e.operationId;
-            items.push({
-              label: `${e.method} ${e.path}`,
-              description: e.summary,
-              detail: multi ? `${c.name} · ${e.tag}` : e.tag,
-              node,
-            });
-          }
+          if (res.groups && res.groups.length > 1) sources = res.groups.map((g) => ({ url: g.url, group: g.name }));
         } catch {
-          /* if one spec fails, keep searching the rest */
+          continue; /* if one spec fails, keep searching the rest */
+        }
+        for (const src of sources) {
+          try {
+            const res = await ensureSpec(context, src.url);
+            for (const e of listEndpoints(res.spec)) {
+              const node: Node = new vscode.TreeItem(`${e.method} ${e.path}`);
+              node._specUrl = src.url;
+              node._kind = "endpoint";
+              node._path = e.path;
+              node._method = e.method;
+              node._tag = e.tag;
+              node._operationId = e.operationId;
+              const where = [multi || src.group ? c.name : "", src.group || "", e.tag].filter(Boolean);
+              items.push({ label: `${e.method} ${e.path}`, description: e.summary, detail: where.join(" · "), node });
+            }
+          } catch {
+            /* if one group fails, keep searching the rest */
+          }
         }
       }
       const pick = await vscode.window.showQuickPick(items, {
