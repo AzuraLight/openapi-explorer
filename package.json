@@ -185,6 +185,7 @@
     "test:unit": "node --import tsx --test src/*.test.ts",
     "test:integration": "NODE_PATH=test/fake-vscode node --import tsx --test test/integration/*.test.ts",
     "test:webview": "NODE_PATH=test/fake-vscode playwright test",
+    "sample:gateway": "node --import tsx test/fixtures/sample-gateway.ts",
     "copy-assets": "node scripts/copy-swagger-ui.mjs",
     "prepare": "node scripts/copy-swagger-ui.mjs",
     "package": "vsce package --no-dependencies -o openapi-explorer-$npm_package_version.vsix"
