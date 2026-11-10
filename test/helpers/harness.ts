@@ -84,3 +84,16 @@ export function startServer(routes: Record<string, Route>, host = "127.0.0.1"): 
 export function specJson(title: string, paths: Record<string, unknown> = {}): string {
   return JSON.stringify({ openapi: "3.0.0", info: { title, version: "1" }, paths });
 }
+
+// Poll until cond() is truthy (for fire-and-forget work such as activation-time migration).
+export async function waitFor(cond: () => unknown, timeoutMs = 2000): Promise<void> {
+  const until = Date.now() + timeoutMs;
+  while (!cond()) {
+    if (Date.now() > until) throw new Error("waitFor: timed out");
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
+export function hostOf(origin: string): string {
+  return new URL(origin).host;
+}

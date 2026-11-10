@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.1] - 2026-11-10
+
+### Security
+
+- **Bearer tokens are now stored per host.** Previously a single token was sent to every registered
+  gateway, and it also hid any per-host Basic credentials. Set or clear a token from a gateway node's
+  right-click menu, or from the palette with a host picker. A token saved by 1.1.0 is moved to the
+  registered host if there is exactly one; with several hosts you are asked which host(s) it belongs
+  to, and it is not sent until you choose.
+
+### Fixed
+
+- Opening a different spec on the same origin (e.g. two services behind one gateway) now re-renders
+  Swagger UI. Previously the tab title changed but the old spec stayed on screen.
+- Try it out: multipart/form-data uploads are sent as real multipart bodies (they were sent as the text
+  `[object FormData]`), and binary responses such as images or files are no longer corrupted.
+- Clicking an endpoint in the tree now expands it in Swagger UI, including tags with spaces and
+  operationIds with special characters.
+- Specs served with a UTF-8 BOM are now parsed.
+
 ## [1.1.0] - 2026-07-03
 
 ### Added
@@ -36,4 +56,5 @@ First public release.
 - Response bodies are capped (25 MB) to prevent memory pressure from huge responses.
 - Webview CSP narrowed (`img-src` no longer allows arbitrary `https:`).
 
+[1.1.1]: https://github.com/AzuraLight/openapi-explorer/releases/tag/v1.1.1
 [1.0.0]: https://github.com/AzuraLight/openapi-explorer/releases/tag/v1.0.0

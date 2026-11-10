@@ -10,10 +10,11 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const isPetstore = (u: string): boolean => /petstore\.swagger\.io/.test(u);
 
 function tryParse(body: string): OpenApiSpec | null {
+  // trimStart also drops a UTF-8 BOM (U+FEFF), which JSON.parse would otherwise reject.
   const trimmed = body.trimStart();
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
     try {
-      const obj = JSON.parse(body);
+      const obj = JSON.parse(trimmed);
       if (obj && (obj.openapi || obj.swagger || obj.paths)) return obj as OpenApiSpec;
     } catch {
       /* not json */
