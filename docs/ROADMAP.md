@@ -44,6 +44,8 @@ How they were reproduced: the real `src/*.ts` was run against a fake `vscode` mo
 
 ### 1.1.1 — Bug fixes
 
+**Status:** released 2026-11-10 — GitHub release `v1.1.1`, Open VSX.
+
 - R4: limit tokens to their host. The approach is set by the industry research under "Decision log" below.
 - R1: re-render the panel when the spec URL changes, not only when the origin changes.
 - R2 and R3: pass FormData request bodies and binary responses between the webview and the extension as base64.
@@ -53,6 +55,8 @@ How they were reproduced: the real `src/*.ts` was run against a fake `vscode` mo
 Done when: all of the reproduction tests above pass.
 
 ### 1.2.0 — Spec reading
+
+**Status:** implemented on `develop` 2026-11-10, not yet released. Bundle 46 KB → 169 KB, VSIX 557 KB → 594 KB (the `yaml` parser).
 
 - E1: YAML parsing, including springdoc `/v3/api-docs.yaml` and NestJS `-yaml` paths.
 - E4: merge path-level parameters. When name and `in` match, the operation's definition wins (Swagger 2.0 `#pathItemParameters`).
@@ -101,6 +105,9 @@ External `$ref`, local files, and auth UI for apiKey, OAuth2, and mutualTLS.
 | 2026-11-10 | Split the roadmap into English `ROADMAP.md` and Korean `ROADMAP.ko.md`                                                                                        | Maintainer decision; same convention as the README                                                                                                    |
 | 2026-11-10 | Store R4 tokens per host. Migrate an existing global token to the single registered host; with two or more hosts, stop sending it and let the user pick hosts | npm, git, gh, and curl all scope credentials per host (https://docs.npmjs.com/cli/v10/configuring-npm/npmrc, https://git-scm.com/docs/gitcredentials) |
 | 2026-11-10 | Add the `yaml` 2.9.1 parser (1.2.0)                                                                                                                           | Reproduced defect E1; springdoc and NestJS serve YAML; no dependencies, ISC license                                                                   |
+| 2026-11-10 | Pin the CI runner to `ubuntu-24.04`                                                                                                                           | `ubuntu-latest` moved to 26.04, where Playwright 1.60 cannot install Chromium (v1.1.1 CI failure)                                                     |
+| 2026-11-10 | Publish to Open VSX from GitHub Actions (`publish-ovsx.yml`), uploading the VSIX attached to the GitHub release                                               | The token lives in the `OVSX_PAT` Actions secret; Open VSX gets the same file as the release                                                          |
+| 2026-11-10 | springdoc groups become tree nodes; swagger-config is checked before the plain candidate paths                                                                | Groups would be missed when a default `/v3/api-docs` also exists (https://springdoc.org/properties.html)                                              |
 
 ## Sources
 

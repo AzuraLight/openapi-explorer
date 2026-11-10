@@ -5,6 +5,7 @@
 import * as vscode from "vscode";
 import { randomBytes } from "node:crypto";
 import { request as httpRequest, stripSensitiveHeaders, type HttpOptions } from "./http";
+import { absoluteServerTemplate } from "./servers";
 import type { OpenApiSpec } from "./types";
 
 export type FocusTarget =
@@ -126,9 +127,12 @@ function ensureServers(spec: OpenApiSpec, baseUrl: string): OpenApiSpec {
     if ((spec as any).host) return spec;
     return { ...spec, host: u.host, schemes: [u.protocol.replace(":", "")] } as OpenApiSpec;
   }
-  const servers = (spec as any).servers as { url: string }[] | undefined;
-  if (servers?.some((s) => /^https?:/i.test(s.url))) return spec;
-  return { ...spec, servers: [{ url: u.origin }] } as OpenApiSpec;
+  // The spec is injected inline, so Swagger UI has no document URL to resolve relative
+  // servers against (it would use the webview origin). Make them absolute here.
+  const servers = (spec.servers || [])
+    .map((s) => ({ ...s, url: absoluteServerTemplate(s.url ?? "", baseUrl) }))
+    .filter((s): s is typeof s & { url: string } => !!s.url);
+  return { ...spec, servers: servers.length ? servers : [{ url: u.origin }] } as OpenApiSpec;
 }
 
 function render(

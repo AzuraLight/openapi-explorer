@@ -25,7 +25,10 @@ tree plus an embedded Swagger UI — no more opening the docs page in Chrome.
   dependent models, JSDoc, and envelope unwrapping), a `fetch` / `axios` client function, or cURL.
 - **Multiple gateways** — register several specs in `swaggerViewer.specs` and switch per service.
 - **UI URL auto-discovery** — paste a `.../api-docs` (Swagger UI page) URL and the real spec
-  (`/api-docs-json`, `/v3/api-docs`, …) is discovered automatically.
+  (`/api-docs-json`, `/v3/api-docs`, `-yaml`, …) is discovered automatically. springdoc groups
+  (`/v3/api-docs/swagger-config`) appear as one node per group.
+- **JSON and YAML, OpenAPI 3.x and Swagger 2.0** — including path-level parameters, Swagger 2
+  `body`/`formData` parameters, and relative `servers` URLs.
 - **Corporate environments** — proxy, private CA certificate, `strictSSL` toggle, and an
   auth token stored in SecretStorage plus custom headers.
 

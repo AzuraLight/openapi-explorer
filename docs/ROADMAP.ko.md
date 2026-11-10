@@ -44,6 +44,8 @@
 
 ### 1.1.1 — 버그 수정
 
+**상태:** 2026-11-10 배포 — GitHub 릴리스 `v1.1.1`, Open VSX.
+
 - R4 토큰을 호스트 범위로 제한 — 처리 방식은 업계 조사로 정함 (아래 "결정 기록")
 - R1 패널 갱신 기준을 origin에서 스펙 URL로
 - R2 FormData와 R3 바이너리를 base64로 전달
@@ -53,6 +55,8 @@
 완료 기준: 위 재현 시험이 모두 통과.
 
 ### 1.2.0 — 스펙 읽기
+
+**상태:** 2026-11-10 `develop`에 구현, 아직 배포 전. 번들 46KB → 169KB, VSIX 557KB → 594KB(`yaml` 파서 때문).
 
 - E1 YAML 파싱 — springdoc `/v3/api-docs.yaml`, NestJS `-yaml` 경로 포함
 - E4 path 단위 파라미터 병합 — name과 in이 같으면 operation 쪽으로 덮어씀 (Swagger 2.0 `#pathItemParameters`)
@@ -101,6 +105,9 @@
 | 2026-11-10 | 로드맵은 영문 `ROADMAP.md`와 한글 `ROADMAP.ko.md`로 나눈다                                                        | 사용자 결정. README와 같은 방식                                                                                                  |
 | 2026-11-10 | R4 토큰은 호스트별 저장. 기존 전역 토큰은 호스트 1개면 그 호스트로 옮기고, 2개 이상이면 보내지 않고 사용자가 고름 | npm·git·gh·curl 모두 호스트 단위 (https://docs.npmjs.com/cli/v10/configuring-npm/npmrc, https://git-scm.com/docs/gitcredentials) |
 | 2026-11-10 | YAML 파서 `yaml` 2.9.1 추가 (1.2.0)                                                                               | 재현된 결함 E1, springdoc·NestJS의 YAML 경로, 의존성 0개·ISC                                                                     |
+| 2026-11-10 | CI 러너를 `ubuntu-24.04`로 고정                                                                                   | `ubuntu-latest`가 26.04로 바뀌어 Playwright 1.60이 Chromium을 설치하지 못함 (v1.1.1 CI 실패)                                     |
+| 2026-11-10 | Open VSX 배포는 GitHub Actions(`publish-ovsx.yml`)에서 GitHub 릴리스에 첨부된 VSIX를 올린다                       | 토큰은 Actions 시크릿 `OVSX_PAT`. 릴리스와 같은 파일이 올라감                                                                    |
+| 2026-11-10 | springdoc 그룹은 트리 노드로 보이고, swagger-config를 일반 후보 경로보다 먼저 확인                                | 기본 `/v3/api-docs`도 있으면 그룹을 놓치기 때문 (https://springdoc.org/properties.html)                                          |
 
 ## 출처
 
