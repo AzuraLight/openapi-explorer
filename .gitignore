@@ -6,3 +6,7 @@ dist/
 
 # generated from swagger-ui-dist by scripts/copy-swagger-ui.mjs (npm run copy-assets)
 media/swagger-ui/
+
+# Playwright output
+test-results/
+playwright-report/
