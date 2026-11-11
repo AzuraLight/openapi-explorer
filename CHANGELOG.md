@@ -10,11 +10,13 @@ All notable changes to this project are documented here. The format is based on
 
 - **Manage APIs like folders in the Explorer.** With nothing registered the view shows a short message and an
   **Add API** button, like the Explorer with no folder open. ＋ in the view title, or right-click an API →
-  **Add API…**, **Rename** (`F2`), **Edit URL…**, **Copy URL**, **Remove API** (`Delete` / `⌘⌫`). Adding,
-  renaming and editing happen in a small inline input above the tree instead of the top input box: Enter checks
-  the URL right away, errors and the username/password for login-protected specs appear inline, and the new API
-  is named from the spec's title. Edits are written back to the settings scope (workspace or user) that holds
-  the entry.
+  **Add API…**, puts a **New API** node in the tree and opens its **settings tab in the editor area**: spec URL,
+  display name, and authentication (none / Bearer token / username & password) in one form, with **Test
+  Connection** and **Save**. Saving checks the URL and names the API from the spec's title; closing the tab
+  without saving removes the New API node. Registered APIs expand on click; right-click → **API Settings…**
+  (`F2`), **Copy URL**, **Remove API** (`Delete` / `⌘⌫`). Saved secrets are never shown in the tab (an empty
+  field keeps them). Edits are written back to the settings scope (workspace or user) that holds the entry.
+  The top input box is no longer used for adding APIs or entering credentials.
 
 - **YAML specs.** Specs are parsed as JSON or YAML regardless of the content type. Discovery also
   tries the YAML paths of springdoc (`/v3/api-docs.yaml`) and NestJS (`/{path}-yaml`). YAML alias
@@ -33,6 +35,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Response JSON in Swagger UI was unreadable in light themes (VS Code's default webview `code` color made it
+  dark-on-dark).
 - A spec URL that answers `401`/`403` now reports "Login required" instead of silently falling back to
   another spec on the same host.
 - Path-level `parameters` now apply to every operation under the path; an operation parameter with

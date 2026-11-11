@@ -16,7 +16,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/images/add-api-light.png">
-  <img src="docs/images/add-api-dark.png" width="640" alt="API 추가: 트리 위 인라인 입력칸에 스펙 주소를 입력한 모습. Enter로 확인, Esc로 취소">
+  <img src="docs/images/add-api-dark.png" width="640" alt="API 추가: 트리의 새 API 노드와 편집 영역의 설정 탭. 스펙 주소와 Bearer 토큰을 입력한 모습">
 </picture>
 
 ## 기능
@@ -42,9 +42,11 @@
 
 ## 사용법
 
-1. OpenAPI 패널의 **＋ API 추가**(또는 API 우클릭 → **API 추가…**)로 스펙 또는 문서 페이지 URL(`.../api-docs` 가능)을
-   트리 위 인라인 입력칸에 입력합니다. Enter를 누르면 바로 확인하고, 이름은 스펙 제목으로 채웁니다. API를 우클릭하면 **이름 변경**(`F2`),
-   **주소 수정**, **주소 복사**, **API 제거**(`Delete` / `⌘⌫`)가 있습니다.
+1. OpenAPI 패널의 **＋ API 추가**(또는 API 우클릭 → **API 추가…**)를 누르면 트리에 **새 API** 노드가 생기고
+   오른쪽 편집 영역에 설정 탭이 열립니다. 스펙 또는 문서 페이지 URL(`.../api-docs` 가능), 이름(선택), 필요하면
+   Bearer 토큰이나 아이디·비밀번호를 넣고 **저장**합니다(먼저 **연결 확인**도 가능). 이름은 비워 두면 스펙 제목을 쓰고,
+   저장하지 않고 탭을 닫으면 새 API 노드는 사라집니다. API를 우클릭하면 **API 설정…**(`F2`), **주소 복사**,
+   **API 제거**(`Delete` / `⌘⌫`)가 있습니다.
 2. 트리를 탐색하거나 **OpenAPI: 엔드포인트 검색**(`Cmd/Ctrl+Alt+/`)을 사용합니다.
 3. 엔드포인트를 클릭해 Swagger UI에서 열고, 우클릭으로 코드를 생성합니다.
 

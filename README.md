@@ -16,7 +16,7 @@ tree plus an embedded Swagger UI — no more opening the docs page in Chrome.
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/images/add-api-light.png">
-  <img src="docs/images/add-api-dark.png" width="640" alt="Adding an API: the inline input above the tree with a spec URL typed in, Enter to confirm and Esc to cancel">
+  <img src="docs/images/add-api-dark.png" width="640" alt="Adding an API: a New API node in the tree and its settings tab in the editor with the spec URL and a Bearer token filled in">
 </picture>
 
 ## Features
@@ -45,10 +45,11 @@ tree plus an embedded Swagger UI — no more opening the docs page in Chrome.
 
 ## Usage
 
-1. Click **＋ Add API** in the OpenAPI view (or right-click an API → **Add API…**) and type your spec or
-   docs-page URL (`.../api-docs` works) in the inline input above the tree. Enter checks it right away and the
-   name is taken from the spec.
-   Right-click an API to **Rename** (`F2`), **Edit URL**, **Copy URL** or **Remove API** (`Delete` / `⌘⌫`).
+1. Click **＋ Add API** in the OpenAPI view (or right-click an API → **Add API…**). A **New API** node appears
+   and its settings tab opens in the editor: enter the spec or docs-page URL (`.../api-docs` works), an optional
+   name, and a Bearer token or username & password if the spec needs one, then **Save** (or **Test Connection**
+   first). The name defaults to the spec's title; closing the tab without saving removes the New API node.
+   Right-click an API for **API Settings…** (`F2`), **Copy URL** or **Remove API** (`Delete` / `⌘⌫`).
 2. Browse the tree, or hit **OpenAPI: Search Endpoints** (`Cmd/Ctrl+Alt+/`).
 3. Click an endpoint to open it in Swagger UI; right-click for code generation.
 

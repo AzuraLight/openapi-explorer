@@ -107,7 +107,7 @@ async function resolveView(id) {
   return view;
 }
 
-function createWebviewPanel(_viewType, title) {
+function createWebviewPanel(viewType, title) {
   let onMsg = null;
   const disposeListeners = [];
   const webview = {
@@ -122,16 +122,21 @@ function createWebviewPanel(_viewType, title) {
     },
     onDidReceiveMessage: (f) => (onMsg = f),
     postMessage: (m) => {
-      rec.posts.push(m);
+      rec.posts.push({ ...m, panel: viewType });
       return Promise.resolve(true);
     },
   };
   const p = {
+    viewType,
     title,
+    disposed: false,
     webview,
     reveal() {},
     onDidDispose: (f) => disposeListeners.push(f),
-    dispose: () => disposeListeners.splice(0).forEach((f) => f()),
+    dispose: () => {
+      p.disposed = true;
+      disposeListeners.splice(0).forEach((f) => f());
+    },
     // Test helper: deliver a message from the webview to the extension.
     send: (m) => onMsg(m),
   };

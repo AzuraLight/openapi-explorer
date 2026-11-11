@@ -55,17 +55,9 @@
     "views": {
       "swaggerViewer": [
         {
-          "type": "webview",
-          "id": "swaggerApiInput",
-          "name": "%view.apiInput%",
-          "when": "swaggerViewer.inputOpen",
-          "initialSize": 1
-        },
-        {
           "id": "swaggerExplorer",
           "name": "%view.explorer%",
-          "icon": "media/openapi.svg",
-          "initialSize": 5
+          "icon": "media/openapi.svg"
         }
       ]
     },
@@ -77,8 +69,9 @@
     ],
     "commands": [
       { "command": "swaggerViewer.addApi", "title": "%cmd.addApi%", "category": "OpenAPI", "icon": "$(add)" },
+      { "command": "swaggerViewer.apiSettings", "title": "%cmd.apiSettings%", "category": "OpenAPI", "icon": "$(gear)" },
+      { "command": "swaggerViewer.openApiSettings", "title": "%cmd.apiSettings%", "category": "OpenAPI" },
       { "command": "swaggerViewer.renameApi", "title": "%cmd.renameApi%", "category": "OpenAPI" },
-      { "command": "swaggerViewer.editApiUrl", "title": "%cmd.editApiUrl%", "category": "OpenAPI" },
       { "command": "swaggerViewer.copyApiUrl", "title": "%cmd.copyApiUrl%", "category": "OpenAPI" },
       { "command": "swaggerViewer.removeApi", "title": "%cmd.removeApi%", "category": "OpenAPI" },
       { "command": "swaggerViewer.refresh", "title": "%cmd.refresh%", "category": "OpenAPI", "icon": "$(refresh)" },
@@ -125,14 +118,11 @@
         { "command": "swaggerViewer.openSwaggerUI", "when": "view == swaggerExplorer && viewItem =~ /^(spec|group)/", "group": "inline" },
         { "command": "swaggerViewer.openInBrowser", "when": "view == swaggerExplorer && viewItem =~ /^(spec|group)/", "group": "1_open@1" },
         { "command": "swaggerViewer.addApi", "when": "view == swaggerExplorer && viewItem =~ /^spec/", "group": "0_api@1" },
-        { "command": "swaggerViewer.renameApi", "when": "view == swaggerExplorer && viewItem =~ /^spec/", "group": "3_manage@1" },
-        { "command": "swaggerViewer.editApiUrl", "when": "view == swaggerExplorer && viewItem =~ /^spec/", "group": "3_manage@2" },
+        { "command": "swaggerViewer.apiSettings", "when": "view == swaggerExplorer && viewItem =~ /^spec/", "group": "3_manage@1" },
         { "command": "swaggerViewer.copyApiUrl", "when": "view == swaggerExplorer && viewItem =~ /^spec/", "group": "3_manage@3" },
+        { "command": "swaggerViewer.apiSettings", "when": "view == swaggerExplorer && viewItem == pendingApi", "group": "3_manage@1" },
+        { "command": "swaggerViewer.removeApi", "when": "view == swaggerExplorer && viewItem == pendingApi", "group": "9_remove@1" },
         { "command": "swaggerViewer.removeApi", "when": "view == swaggerExplorer && viewItem =~ /^spec/", "group": "9_remove@1" },
-        { "command": "swaggerViewer.setToken", "when": "view == swaggerExplorer && viewItem =~ /^spec/", "group": "2_auth@1" },
-        { "command": "swaggerViewer.clearToken", "when": "view == swaggerExplorer && viewItem =~ /^spec.*:token/", "group": "2_auth@2" },
-        { "command": "swaggerViewer.setBasicAuth", "when": "view == swaggerExplorer && viewItem =~ /^spec/", "group": "2_auth@3" },
-        { "command": "swaggerViewer.clearBasicAuth", "when": "view == swaggerExplorer && viewItem =~ /^spec.*:basic/", "group": "2_auth@4" },
         { "command": "swaggerViewer.copyTs", "when": "view == swaggerExplorer && viewItem == endpoint", "group": "1_copy@1" },
         { "command": "swaggerViewer.copyFetch", "when": "view == swaggerExplorer && viewItem == endpoint", "group": "1_copy@2" },
         { "command": "swaggerViewer.copyAxios", "when": "view == swaggerExplorer && viewItem == endpoint", "group": "1_copy@3" },
@@ -142,7 +132,7 @@
       "commandPalette": [
         { "command": "swaggerViewer.openOperation", "when": "false" },
         { "command": "swaggerViewer.renameApi", "when": "false" },
-        { "command": "swaggerViewer.editApiUrl", "when": "false" },
+        { "command": "swaggerViewer.openApiSettings", "when": "false" },
         { "command": "swaggerViewer.copyApiUrl", "when": "false" },
         { "command": "swaggerViewer.removeApi", "when": "false" },
         { "command": "swaggerViewer.copyTs", "when": "false" },

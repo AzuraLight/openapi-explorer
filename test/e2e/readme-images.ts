@@ -157,13 +157,14 @@ async function scene(theme: keyof typeof THEMES, gatewayOrigin: string, withGif:
     await sleep(600);
     await s.win.screenshot({ path: path.join(IMAGES, `overview-${theme}.png`), clip: CLIP });
 
-    // Add API: ＋ in the view title opens the inline input above the tree.
-    // View title actions only show while the header is hovered.
+    // Add API: ＋ in the view title adds a "New API" node and opens its settings tab in the editor.
     await s.win.locator(".part.sidebar .composite.title").first().hover();
     await sleep(300);
     await s.win.locator('.part.sidebar .action-label[aria-label^="Add API"]').first().click();
-    const input = await frameWith(s.win, "#value");
-    await input.locator("#value").fill("https://api.example.com/v3/api-docs");
+    const tab = await frameWith(s.win, "#url");
+    await tab.locator("#url").fill("https://api.example.com/v3/api-docs");
+    await tab.getByLabel("Bearer token").check();
+    await tab.locator("#token").fill("example-token");
     await sleep(800);
     await s.win.screenshot({ path: path.join(IMAGES, `add-api-${theme}.png`), clip: CLIP });
     console.log(`${theme}: stills written`);
