@@ -257,3 +257,57 @@ test("legacy swaggerViewer.url: listed next to specs; saving its settings moves 
     ["Legacy", "a"]
   );
 });
+
+// ---- settings tab polish (industry patterns: delete row for saved secrets, dirty marker) ----
+
+test("package.json: the palette-only 'Clear token / username & password' commands are gone (done in API Settings)", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
+  const ids = pkg.contributes.commands.map((c: any) => c.command);
+  assert.ok(!ids.includes("swaggerViewer.clearToken"));
+  assert.ok(!ids.includes("swaggerViewer.clearBasicAuth"));
+});
+
+test("Delete on a saved token (marked in the tab) removes it when saved", async () => {
+  rec.globalConfig["swaggerViewer.specs"] = [{ name: "a", url: `${srv.origin}/v3/api-docs` }];
+  const { context, secrets } = makeContext();
+  secrets["swaggerViewer.bearerTokens"] = JSON.stringify({ [new URL(srv.origin).host]: "OLD" });
+  ext.activate(context);
+  await rec.commands["swaggerViewer.apiSettings"]((await roots())[0]);
+  await waitFor(() => lastInit());
+  await send("save", { name: "a", url: `${srv.origin}/v3/api-docs`, auth: "bearer", deleteToken: true });
+  assert.doesNotMatch(secrets["swaggerViewer.bearerTokens"] ?? "", /OLD/);
+});
+
+test("dirty: the tab title gets ● while there are unsaved changes", async () => {
+  rec.globalConfig["swaggerViewer.specs"] = [{ name: "a", url: "https://a.example.com/x" }];
+  activate();
+  await rec.commands["swaggerViewer.apiSettings"]((await roots())[0]);
+  await waitFor(() => lastInit());
+  await tab().send({
+    type: "dirty",
+    dirty: true,
+    data: data({ name: "changed", url: "https://a.example.com/x" }),
+  });
+  assert.match(tab().title, /^● /);
+  await tab().send({
+    type: "dirty",
+    dirty: false,
+    data: data({ name: "a", url: "https://a.example.com/x" }),
+  });
+  assert.doesNotMatch(tab().title, /^● /);
+});
+
+test("closing with unsaved changes keeps them: notification with Reopen restores the draft", async () => {
+  rec.globalConfig["swaggerViewer.specs"] = [{ name: "a", url: "https://a.example.com/x" }];
+  activate();
+  await rec.commands["swaggerViewer.apiSettings"]((await roots())[0]);
+  await waitFor(() => lastInit());
+  const draft = data({ name: "half-typed", url: "https://a.example.com/x" });
+  await tab().send({ type: "dirty", dirty: true, data: draft });
+  rec.answers.push("Reopen");
+  tab().dispose();
+  await waitFor(() => tabs().length === 2);
+  await waitFor(() => lastInit()?.draft);
+  assert.equal(lastInit().draft.name, "half-typed");
+  assert.ok(rec.msgs.some((m: string) => /Unsaved changes/.test(m)));
+});

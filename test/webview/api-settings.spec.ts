@@ -15,6 +15,7 @@ const base: SettingsInit = {
   username: "",
   hasToken: false,
   hasPassword: false,
+  legacyToken: false,
 };
 
 async function load(page: Page, init: SettingsInit = base) {
@@ -27,6 +28,7 @@ async function load(page: Page, init: SettingsInit = base) {
       return false;
     },
     test: async (_i, d) => void fromTab.push({ type: "test", data: d }),
+    useLegacy: async () => undefined,
     closed: () => {},
   });
   panels.show(init);
@@ -34,7 +36,7 @@ async function load(page: Page, init: SettingsInit = base) {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "oae-settings-")), "index.html");
   fs.writeFileSync(file, panel.webview.html);
   await page.exposeFunction("__toExtension", async (m: any) => {
-    if (m.type === "cancel") fromTab.push(m);
+    if (["cancel", "dirty", "useLegacy"].includes(m.type)) fromTab.push(m);
     else if (m.type !== "ready") await panel.send(m);
   });
   await page.addInitScript(() => {
@@ -73,14 +75,19 @@ test("new API: URL focused; auth fields follow the chosen method; Enter saves ev
         token: "",
         username: "u",
         password: "p",
+        deleteToken: false,
+        deletePassword: false,
       },
     });
 });
 
-test("saved secrets show a 'keep' placeholder, never a value", async ({ page }) => {
+test("a saved token is never put in the field: a 'Saved token' row instead, new input replaces it", async ({
+  page,
+}) => {
   await load(page, { ...base, isNew: false, key: base.url, name: "G", auth: "bearer", hasToken: true });
   await expect(page.locator("#token")).toHaveValue("");
-  await expect(page.locator("#token")).toHaveAttribute("placeholder", /leave empty to keep/);
+  await expect(page.locator("#savedToken")).toContainText("Saved token");
+  await expect(page.locator("#token")).toHaveAttribute("placeholder", /replaces the saved one/);
 });
 
 test("error status shows Save Anyway; Escape cancels", async ({ page }) => {
@@ -97,4 +104,54 @@ test("error status shows Save Anyway; Escape cancels", async ({ page }) => {
   await expect.poll(() => fromTab.at(-1)?.type).toBe("saveAnyway");
   await page.keyboard.press("Escape");
   await expect.poll(() => fromTab.at(-1)?.type).toBe("cancel");
+});
+
+const saved: SettingsInit = {
+  ...base,
+  isNew: false,
+  key: base.url,
+  name: "G",
+  auth: "bearer",
+  hasToken: true,
+  legacyToken: false,
+};
+
+test("eye toggle shows and hides what is being typed", async ({ page }) => {
+  await load(page, { ...base, auth: "bearer" });
+  const token = page.locator("#token");
+  await token.fill("abc");
+  await expect(token).toHaveAttribute("type", "password");
+  const eye = page.getByRole("button", { name: "Show token" });
+  await eye.click();
+  await expect(token).toHaveAttribute("type", "text");
+  await expect(page.getByRole("button", { name: "Hide token" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Hide token" }).click();
+  await expect(token).toHaveAttribute("type", "password");
+});
+
+test("saved token row: Delete marks it (Undo restores); Save sends deleteToken", async ({ page }) => {
+  const { fromTab } = await load(page, saved);
+  const row = page.locator("#savedToken");
+  await expect(row).toContainText("Saved token");
+  await row.getByRole("button", { name: "Delete" }).click();
+  await expect(row).toContainText("deleted when you save");
+  await row.getByRole("button", { name: "Undo" }).click();
+  await expect(row).toContainText("Saved token");
+  await row.getByRole("button", { name: "Delete" }).click();
+  await page.locator("#save").click();
+  await expect.poll(() => fromTab.at(-1)?.data?.deleteToken).toBe(true);
+});
+
+test("legacy token row offers 'Use for this API'", async ({ page }) => {
+  const { fromTab } = await load(page, { ...saved, hasToken: false, legacyToken: true });
+  await page.getByRole("button", { name: "Use for this API" }).click();
+  await expect.poll(() => fromTab.at(-1)?.type).toBe("useLegacy");
+});
+
+test("editing reports dirty with the current form; reverting reports clean", async ({ page }) => {
+  const { fromTab } = await load(page, saved);
+  await page.locator("#name").fill("G2");
+  await expect.poll(() => fromTab.filter((m) => m.type === "dirty").at(-1)?.dirty).toBe(true);
+  await page.locator("#name").fill("G");
+  await expect.poll(() => fromTab.filter((m) => m.type === "dirty").at(-1)?.dirty).toBe(false);
 });

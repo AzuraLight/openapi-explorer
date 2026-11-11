@@ -68,6 +68,27 @@ const treeLabels = (win: Page) =>
       "root description:",
       await s.win.locator(".monaco-list-row").first().locator(".label-description").textContent()
     );
+
+    // 5) Reopen: saved token row (no value), eye toggle, ● in the tab title while editing.
+    await s.row((await treeLabels(s.win))[0] || "").click({ button: "right" });
+    await sleep(800);
+    await s.win
+      .locator(".monaco-menu .action-label", { hasText: /^API Settings/ })
+      .first()
+      .click();
+    f = await settingsFrame(s.win);
+    console.log(
+      "saved row:",
+      await f!.locator("#savedToken").innerText(),
+      "| token value:",
+      await f!.locator("#token").inputValue()
+    );
+    await f!.locator("#token").fill("new-token");
+    await f!.getByRole("button", { name: "Show token" }).click();
+    await f!.locator("#name").fill("Edited name");
+    await sleep(600);
+    console.log("tab title:", await s.win.locator(".tab.active .label-name").first().textContent());
+    await s.win.screenshot({ path: path.join(E2E_ROOT, "ui-4-polish.png") });
   } finally {
     await s.close();
     await gw.close();

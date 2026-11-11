@@ -17,6 +17,13 @@ All notable changes to this project are documented here. The format is based on
   (`F2`), **Copy URL**, **Remove API** (`Delete` / `⌘⌫`). Saved secrets are never shown in the tab (an empty
   field keeps them). Edits are written back to the settings scope (workspace or user) that holds the entry.
   The top input box is no longer used for adding APIs or entering credentials.
+- **Settings tab details** (following Postman / Insomnia / Bruno patterns): an eye button shows or hides the
+  token or password being typed; a saved secret appears as a "Saved token ••••" row with **Delete** (applied on
+  Save, with Undo); the tab title shows ● while there are unsaved changes, and closing with changes keeps them
+  with a **Reopen** notification (webview tabs cannot ask before closing). A token saved before 1.1.1 is offered
+  in each API's settings as **Use for this API** instead of a host picker.
+- The palette commands **Clear Auth Token** / **Clear Username & Password** are removed: choose **None** or
+  **Delete** in the API's settings.
 
 - **YAML specs.** Specs are parsed as JSON or YAML regardless of the content type. Discovery also
   tries the YAML paths of springdoc (`/v3/api-docs.yaml`) and NestJS (`/{path}-yaml`). YAML alias

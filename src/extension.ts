@@ -192,7 +192,7 @@ function registeredHosts(): string[] {
 async function migrateLegacyToken(
   context: vscode.ExtensionContext,
   onChange: () => void,
-  chooseHosts: (hosts: string[]) => Promise<void>
+  chooseHosts: () => Promise<void>
 ): Promise<void> {
   const legacy = await context.secrets.get(LEGACY_TOKEN_KEY);
   if (!legacy) return;
@@ -210,14 +210,19 @@ async function migrateLegacyToken(
     ),
     choose
   );
-  if (answer === choose) await chooseHosts(hosts);
+  if (answer === choose) await chooseHosts();
 }
 
-async function assignLegacyToken(context: vscode.ExtensionContext, hosts: string[]): Promise<boolean> {
+// override: the user chose this host explicitly ("Use for this API"), so replace a token already there.
+async function assignLegacyToken(
+  context: vscode.ExtensionContext,
+  hosts: string[],
+  override = false
+): Promise<boolean> {
   const legacy = await context.secrets.get(LEGACY_TOKEN_KEY);
   if (!legacy) return false;
   const map = await readTokenMap(context);
-  for (const h of hosts) if (!map[h]) map[h] = legacy;
+  for (const h of hosts) if (override || !map[h]) map[h] = legacy;
   await writeTokenMap(context, map);
   await context.secrets.delete(LEGACY_TOKEN_KEY);
   return true;
@@ -574,16 +579,19 @@ export function activate(context: vscode.ExtensionContext): void {
     await writeBasicAuthMap(context, basics);
   }
   // What the settings form asks for, merged with what is saved (empty secret field = keep saved).
+  // An empty secret field keeps the saved value unless the tab marked it for deletion.
   function wantedCreds(data: SettingsData, saved: Creds): Creds {
-    if (data.auth === "bearer") return { token: data.token || saved.token };
+    if (data.auth === "bearer") return { token: data.token || (data.deleteToken ? undefined : saved.token) };
     if (data.auth === "basic") {
-      return { basic: { username: data.username, password: data.password || saved.basic?.password || "" } };
+      const keep = data.deletePassword ? "" : saved.basic?.password || "";
+      return { basic: { username: data.username, password: data.password || keep } };
     }
     return {};
   }
 
   // ---- the "API settings" tab (editor area) ----
   const pendingApis = new Map<string, number>(); // "new:<n>" → n, APIs being added (not saved yet)
+  const drafts = new Map<string, SettingsData>(); // unsaved forms of closed settings tabs, by API URL
   let pendingSeq = 0;
   provider.pending = () => [...pendingApis.keys()];
 
@@ -679,17 +687,42 @@ export function activate(context: vscode.ExtensionContext): void {
         await cfg.update("specs", [...current, { name, url: data.url }], target);
         pendingApis.delete(init.key);
       }
+      drafts.delete(init.key);
       resetCaches();
       const node = (await provider.getChildren()).find((n) => n._specUrl === data.url && n._apiRoot);
       if (node) await treeView.reveal(node, { select: true, focus: false, expand: true });
       return true;
     },
 
-    closed(init, saved) {
+    async useLegacy(init, post) {
+      const host = hostOf(init.url);
+      if (!(await assignLegacyToken(context, [host], true))) return undefined;
+      resetCaches();
+      post({ type: "status", kind: "ok", text: vscode.l10n.t("The saved token is now used for {0}.", host) });
+      return { auth: "bearer", hasToken: true, legacyToken: false };
+    },
+
+    closed(init, saved, draft) {
       // Like an empty new folder name in the Explorer: closing an unsaved "New API" removes it.
-      if (init.isNew && !saved && pendingApis.delete(init.key)) provider.refresh();
+      if (init.isNew && !saved && pendingApis.delete(init.key)) return provider.refresh();
+      // Webview tabs cannot ask before closing; keep the unsaved form and offer it back.
+      if (!init.isNew && draft) {
+        drafts.set(init.key, draft);
+        const reopen = vscode.l10n.t("Reopen");
+        void vscode.window
+          .showInformationMessage(vscode.l10n.t("Unsaved changes to {0} were kept.", init.name), reopen)
+          .then((pick) => {
+            if (pick === reopen) void openSettings(init.key);
+          });
+      }
     },
   });
+
+  function takeDraft(key: string): SettingsData | undefined {
+    const d = drafts.get(key);
+    drafts.delete(key);
+    return d;
+  }
 
   async function openSettings(key: string, focus?: SettingsInit["focus"], preset?: AuthKind): Promise<void> {
     if (pendingApis.has(key)) {
@@ -703,6 +736,7 @@ export function activate(context: vscode.ExtensionContext): void {
         username: "",
         hasToken: false,
         hasPassword: false,
+        legacyToken: false,
         focus,
       });
     }
@@ -718,6 +752,8 @@ export function activate(context: vscode.ExtensionContext): void {
       username: saved.basic?.username ?? "",
       hasToken: !!saved.token,
       hasPassword: !!saved.basic?.password,
+      legacyToken: !!(await context.secrets.get(LEGACY_TOKEN_KEY)),
+      draft: takeDraft(key),
       focus,
     });
   }
@@ -757,36 +793,6 @@ export function activate(context: vscode.ExtensionContext): void {
     settings.close(n._specUrl!);
     await updateEntry(n._specUrl!, () => null);
     resetCaches();
-  }
-
-  // Palette "Clear token / username & password": the selected API's host, or pick the host(s).
-  async function clearCredential(kind: "token" | "basic", arg?: Node): Promise<void> {
-    const saved = Object.keys(
-      kind === "token" ? await readTokenMap(context) : await readBasicAuthMap(context)
-    );
-    let hosts = arg?._specUrl ? [hostOf(arg._specUrl)] : saved;
-    if (hosts.length === 0) {
-      vscode.window.showInformationMessage(
-        kind === "token"
-          ? vscode.l10n.t("No saved token to clear.")
-          : vscode.l10n.t("No saved username & password to clear.")
-      );
-      return;
-    }
-    if (hosts.length > 1) {
-      const picked = await vscode.window.showQuickPick(
-        hosts.map((h) => ({ label: h })),
-        { canPickMany: true, placeHolder: vscode.l10n.t("Select the host(s) to clear") }
-      );
-      if (!picked?.length) return;
-      hosts = picked.map((p) => p.label);
-    }
-    for (const h of hosts) {
-      const c = await credsOf(h);
-      await writeCreds(h, kind === "token" ? { basic: c.basic } : { token: c.token });
-    }
-    resetCaches();
-    vscode.window.showInformationMessage(vscode.l10n.t("Cleared for: {0}", hosts.join(", ")));
   }
 
   context.subscriptions.push(
@@ -896,32 +902,17 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("swaggerViewer.setBasicAuth", (arg?: Node) =>
       apiSettings(arg, "auth", "basic")
     ),
-    vscode.commands.registerCommand("swaggerViewer.clearToken", (arg?: Node) =>
-      clearCredential("token", arg)
-    ),
-    vscode.commands.registerCommand("swaggerViewer.clearBasicAuth", (arg?: Node) =>
-      clearCredential("basic", arg)
-    ),
-
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("swaggerViewer")) resetCaches();
     })
   );
 
   // Fire-and-forget: may wait on the user's choice, must not block activation.
-  migrateLegacyToken(context, resetCaches, async (hosts) => {
-    const picked = await vscode.window.showQuickPick(
-      hosts.map((h) => ({ label: h })),
-      { canPickMany: true, placeHolder: vscode.l10n.t("Select the host(s) to apply the saved token to") }
-    );
-    if (
-      picked?.length &&
-      (await assignLegacyToken(
-        context,
-        picked.map((p) => p.label)
-      ))
-    )
-      resetCaches();
+  // Several APIs: open the first one's settings on the auth section, where every API's tab offers
+  // "Use for this API" while the legacy token is unassigned (no host picker).
+  migrateLegacyToken(context, resetCaches, async () => {
+    const first = specEntries()[0];
+    if (first) await openSettings(first.url, "auth", "bearer");
   }).catch((e) => console.error("[openapi-explorer] legacy token migration failed", e));
 }
 

@@ -110,27 +110,6 @@ test("choosing 'None' in settings removes the host's credentials", async () => {
   );
 });
 
-test("clearToken on host A's node removes only A's token, without asking", async () => {
-  register(A, B);
-  const { context } = makeContext();
-  ext.activate(context);
-  const [nodeA, nodeB] = await rec.treeProvider.getChildren();
-  await saveSettings("swaggerViewer.apiSettings", nodeA, { auth: "bearer", token: "tA" });
-  await saveSettings("swaggerViewer.apiSettings", nodeB, { auth: "bearer", token: "tB" });
-  await rec.commands["swaggerViewer.clearToken"]((await rec.treeProvider.getChildren())[0]);
-  A.requests.length = 0;
-  B.requests.length = 0;
-  await loadAllSpecs();
-  assert.ok(
-    authOf(A).every((h) => h === undefined),
-    `A got ${authOf(A)}`
-  );
-  assert.ok(
-    authOf(B).every((h) => h === "Bearer tB"),
-    `B got ${authOf(B)}`
-  );
-});
-
 test("legacy global token with one registered host migrates to that host", async () => {
   register(A);
   const { context, secrets } = makeContext();
@@ -160,12 +139,17 @@ test("legacy global token with several hosts is not sent anywhere until the user
   assert.equal(secrets[LEGACY_KEY], "legacy", "legacy value is kept until the user decides");
 });
 
-test("legacy global token: picking host A from the notification assigns it to A only", async () => {
+test("legacy global token: Choose hosts opens the first API's settings on its auth section; 'Use for this API' assigns it there only", async () => {
   register(A, B);
   const { context, secrets } = makeContext();
   secrets[LEGACY_KEY] = "legacy";
-  rec.answers.push("Choose hosts", [hostOf(A.origin)]);
+  rec.answers.push("Choose hosts");
   ext.activate(context);
+  await waitFor(() => lastInit()?.legacyToken === true);
+  assert.equal(lastInit().focus, "auth");
+  assert.equal(lastInit().url, `${A.origin}/v3/api-docs`);
+  const tab = rec.panels.filter((p: any) => p.viewType === SETTINGS).at(-1);
+  await tab.send({ type: "useLegacy" });
   await waitFor(() => secrets[LEGACY_KEY] === undefined);
   await loadAllSpecs();
   assert.ok(authOf(A).length > 0 && authOf(A).every((h) => h === "Bearer legacy"), `A got ${authOf(A)}`);
@@ -173,4 +157,17 @@ test("legacy global token: picking host A from the notification assigns it to A 
     authOf(B).every((h) => h === undefined),
     `B got ${authOf(B)}`
   );
+  assert.equal(rec.prompts.length, 0, "no quick pick");
+});
+
+test("while a legacy token exists, every API's settings tab offers it (legacyToken)", async () => {
+  register(A, B);
+  const { context, secrets } = makeContext();
+  secrets[LEGACY_KEY] = "legacy";
+  rec.answers.push(undefined);
+  ext.activate(context);
+  const [, nodeB] = await rec.treeProvider.getChildren();
+  await rec.commands["swaggerViewer.apiSettings"](nodeB);
+  await waitFor(() => lastInit()?.key === nodeB._specUrl);
+  assert.equal(lastInit().legacyToken, true);
 });
