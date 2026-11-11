@@ -66,3 +66,45 @@ test("R3: binary response arrives in the webview byte-for-byte", async ({ page }
   }, `${srv.origin}/img`);
   expect(hex).toBe(PNG.toString("hex"));
 });
+
+// VS Code injects `@layer vscode-default { code { color: var(--vscode-textPreformat-foreground) } }` into
+// every webview (src/vs/workbench/contrib/webview/browser/pre/index.html). In Light Modern that is #3b3b3b,
+// which made Swagger UI's response JSON (light text on its dark <pre>) unreadable.
+test("response JSON stays readable under VS Code's light default webview styles", async ({ page }) => {
+  await page.addInitScript(() => {
+    const style = () => {
+      const s = document.createElement("style");
+      s.textContent =
+        "@layer vscode-default { code { color: var(--vscode-textPreformat-foreground); } pre code { background-color: transparent; } }";
+      document.head.prepend(s);
+      document.documentElement.style.setProperty("--vscode-textPreformat-foreground", "#3b3b3b");
+    };
+    if (document.head) style();
+    else document.addEventListener("DOMContentLoaded", style);
+  });
+  const json = await startServer({ "/data": () => ({ body: '{"success":true,"name":"x"}' }) });
+  try {
+    const getSpec = {
+      openapi: "3.0.0",
+      info: { title: "Readable", version: "1" },
+      paths: {
+        "/data": { get: { operationId: "json", tags: ["t"], responses: { "200": { description: "ok" } } } },
+      },
+    };
+    const r = renderWebview(getSpec, `${json.origin}/v3/api-docs`);
+    await openInPage(page, r);
+    const op = page.locator("#operations-t-json");
+    await op.locator(".opblock-summary-control").click();
+    await op.locator("button.try-out__btn").click();
+    await op.locator("button.execute").click();
+    const pre = op.locator(".live-responses-table pre.microlight").first();
+    await expect(pre).toBeVisible();
+    const { preColor, codeColor } = await pre.evaluate((el) => ({
+      preColor: getComputedStyle(el).color,
+      codeColor: getComputedStyle(el.querySelector("code")!).color,
+    }));
+    expect(codeColor).toBe(preColor);
+  } finally {
+    await json.close();
+  }
+});

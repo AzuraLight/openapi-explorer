@@ -155,6 +155,10 @@ function render(
   <style nonce="${nonce}">
     body { margin: 0; background: #fff; }
     .topbar { display: none; }
+    /* VS Code's default webview styles color every <code> with --vscode-textPreformat-foreground
+       (#3b3b3b in Light Modern). Swagger UI colors its dark <pre> blocks but not the <code> inside,
+       so response JSON turned dark-on-dark. Let it inherit the <pre>'s color. */
+    #swagger-ui pre code { color: inherit; }
   </style>
 </head>
 <body>
