@@ -21,3 +21,4 @@ tsconfig.json
 README.ko.md
 media/icon.svg
 **/.DS_Store
+out-demo/**

@@ -4,9 +4,26 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [1.2.0] - 2026-11-10
+## [1.2.0] - 2026-11-11
 
 ### Added
+
+- **Manage APIs like folders in the Explorer.** With nothing registered the view shows a short message and an
+  **Add API** button, like the Explorer with no folder open. ＋ in the view title, or right-click an API →
+  **Add API…**, puts a **New API** node in the tree and opens its **settings tab in the editor area**: spec URL,
+  display name, and authentication (none / Bearer token / username & password) in one form, with **Test
+  Connection** and **Save**. Saving checks the URL and names the API from the spec's title; closing the tab
+  without saving removes the New API node. Registered APIs expand on click; right-click → **API Settings…**
+  (`F2`), **Copy URL**, **Remove API** (`Delete` / `⌘⌫`). Saved secrets are never shown in the tab (an empty
+  field keeps them). Edits are written back to the settings scope (workspace or user) that holds the entry.
+  The top input box is no longer used for adding APIs or entering credentials.
+- **Settings tab details** (following Postman / Insomnia / Bruno patterns): an eye button shows or hides the
+  token or password being typed; a saved secret appears as a "Saved token ••••" row with **Delete** (applied on
+  Save, with Undo); the tab title shows ● while there are unsaved changes, and closing with changes keeps them
+  with a **Reopen** notification (webview tabs cannot ask before closing). A token saved before 1.1.1 is offered
+  in each API's settings as **Use for this API** instead of a host picker.
+- The palette commands **Clear Auth Token** / **Clear Username & Password** are removed: choose **None** or
+  **Delete** in the API's settings.
 
 - **YAML specs.** Specs are parsed as JSON or YAML regardless of the content type. Discovery also
   tries the YAML paths of springdoc (`/v3/api-docs.yaml`) and NestJS (`/{path}-yaml`). YAML alias
@@ -14,8 +31,28 @@ All notable changes to this project are documented here. The format is based on
 - **springdoc groups.** When a Swagger UI page is backed by `/v3/api-docs/swagger-config` with
   `urls`, each group is shown as its own node under the gateway, and search covers every group.
 
+### Changed
+
+- **New icon:** `{ ⚡ }` — braces for the API document and a bolt for calling it from the editor, on Swagger UI's
+  method green. The activity bar uses a matching monochrome version.
+- README screenshots and a GIF tour, recorded from the real VS Code (`test/e2e/readme-images.ts`).
+- **Set URL** and **Add Spec** are replaced by **Add API**. An existing `swaggerViewer.url` keeps working and is
+  now listed next to `swaggerViewer.specs` (it used to be hidden as soon as `specs` had an entry); it is
+  never rewritten automatically — renaming or editing it moves it into `specs`.
+
 ### Fixed
 
+- API settings edge cases found by testing and an independent review: saving twice quickly no longer adds the
+  API twice; cancelling while a save is checking the URL no longer saves it; changing an API's URL to another
+  host carries its credentials over; Test Connection no longer writes the stored secrets (it used to put trial
+  values there briefly); Bearer with no token is reported; a URL with or without a trailing `/` counts as the
+  same API; a removed API's unsaved draft is dropped; editing an API that was removed meanwhile is reported; a
+  new API is added to the user-settings list when that is where the list lives; a clipboard URL containing
+  credentials is not prefilled. The tab notes when credentials are shared with other APIs on the same host.
+- Response JSON in Swagger UI was unreadable in light themes (VS Code's default webview `code` color made it
+  dark-on-dark).
+- A spec URL that answers `401`/`403` now reports "Login required" instead of silently falling back to
+  another spec on the same host.
 - Path-level `parameters` now apply to every operation under the path; an operation parameter with
   the same name and location overrides it.
 - Swagger 2.0: `in: body` and `in: formData` parameters become the request body (content type from

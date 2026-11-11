@@ -1,11 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <!--
-    OpenAPI Explorer marketplace icon.
-    Identity: a Swagger-style API mark (ring + center node) on Swagger's signature
-    green (#49cc90, the GET-method color) so the OpenAPI / Swagger identity reads
-    instantly. Flat and minimal: one solid field, one white mark.
+    OpenAPI Explorer marketplace icon: { ⚡ } — braces for an API document, a bolt for calling it
+    right from the editor (Try it out). Green is Swagger UI's POST method color (#49cc90, from the
+    bundled swagger-ui.css .opblock-post). Not the Swagger logo, which is SmartBear's trademark.
   -->
-  <rect width="256" height="256" fill="#49cc90"/>
-  <circle cx="128" cy="128" r="72" fill="none" stroke="#ffffff" stroke-width="18"/>
-  <circle cx="128" cy="128" r="22" fill="#ffffff"/>
+  <rect width="256" height="256" rx="48" fill="#49cc90"/>
+  <g fill="none" stroke="#fff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"><path d="M72 52 C54 52 54 64 54 82 L54 106 C54 119 47 128 37 128 C47 128 54 137 54 150 L54 174 C54 192 54 204 72 204"/><path d="M184 52 C202 52 202 64 202 82 L202 106 C202 119 209 128 219 128 C209 128 202 137 202 150 L202 174 C202 192 202 204 184 204"/></g>
+  <path d="M141 64 L99 138 H127 L115 192 L157 116 H129 Z" fill="#fff" stroke="#fff" stroke-width="6" stroke-linejoin="round"/>
 </svg>

@@ -58,6 +58,8 @@
 
 **상태:** 2026-11-10 `develop`에 구현, 아직 배포 전. 번들 46KB → 169KB, VSIX 557KB → 594KB(`yaml` 파서 때문).
 
+1.2.0에 함께 들어감: API를 탐색기 폴더처럼 관리 — ＋ / 우클릭 **API 추가…**, **이름 변경**(`F2`), **주소 수정…**, **주소 복사**, **API 제거**(`Delete`/`⌘⌫`). 실제 VS Code에서 확인(`test/e2e/vscode-ui.ts`).
+
 - E1 YAML 파싱 — springdoc `/v3/api-docs.yaml`, NestJS `-yaml` 경로 포함
 - E4 path 단위 파라미터 병합 — name과 in이 같으면 operation 쪽으로 덮어씀 (Swagger 2.0 `#pathItemParameters`)
 - E12~E14 Swagger 2의 body·formData·`responses.schema`·consumes·produces
@@ -66,6 +68,11 @@
 - paths 없는 3.1 문서와 webhooks 허용, `$ref`의 summary·description 덮어쓰기
 
 완료 기준: E1~E4, E12~E14 시험 통과.
+
+### 다음 — 로컬 스펙 파일 ("보류"에서 앞당김)
+
+- `file://` 스펙을 읽고, 파일이 바뀌면 다시 불러온다.
+- 탐색기에서 스펙 파일 우클릭 → **OpenAPI Explorer에 추가** (`explorer/context`, `resourceFilename =~ /(openapi|swagger|api-docs)/`로 거름 — https://code.visualstudio.com/api/references/when-clause-contexts).
 
 ### 1.3.0 — 코드 생성
 
@@ -98,16 +105,19 @@
 
 ## 결정 기록
 
-| 날짜       | 결정                                                                                                              | 근거                                                                                                                             |
-| ---------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-11-10 | TS 생성 기준은 openapi-typescript                                                                                 | 실제 실행 출력. 문서: https://openapi-ts.dev/advanced                                                                            |
-| 2026-11-10 | 시험 하네스를 저장소에 넣고 CI에서 돈다                                                                           | 사용자 결정                                                                                                                      |
-| 2026-11-10 | 로드맵은 영문 `ROADMAP.md`와 한글 `ROADMAP.ko.md`로 나눈다                                                        | 사용자 결정. README와 같은 방식                                                                                                  |
-| 2026-11-10 | R4 토큰은 호스트별 저장. 기존 전역 토큰은 호스트 1개면 그 호스트로 옮기고, 2개 이상이면 보내지 않고 사용자가 고름 | npm·git·gh·curl 모두 호스트 단위 (https://docs.npmjs.com/cli/v10/configuring-npm/npmrc, https://git-scm.com/docs/gitcredentials) |
-| 2026-11-10 | YAML 파서 `yaml` 2.9.1 추가 (1.2.0)                                                                               | 재현된 결함 E1, springdoc·NestJS의 YAML 경로, 의존성 0개·ISC                                                                     |
-| 2026-11-10 | CI 러너를 `ubuntu-24.04`로 고정                                                                                   | `ubuntu-latest`가 26.04로 바뀌어 Playwright 1.60이 Chromium을 설치하지 못함 (v1.1.1 CI 실패)                                     |
-| 2026-11-10 | Open VSX 배포는 GitHub Actions(`publish-ovsx.yml`)에서 GitHub 릴리스에 첨부된 VSIX를 올린다                       | 토큰은 Actions 시크릿 `OVSX_PAT`. 릴리스와 같은 파일이 올라감                                                                    |
-| 2026-11-10 | springdoc 그룹은 트리 노드로 보이고, swagger-config를 일반 후보 경로보다 먼저 확인                                | 기본 `/v3/api-docs`도 있으면 그룹을 놓치기 때문 (https://springdoc.org/properties.html)                                          |
+| 날짜       | 결정                                                                                                              | 근거                                                                                                                                                                                                                                                     |
+| ---------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-11-10 | TS 생성 기준은 openapi-typescript                                                                                 | 실제 실행 출력. 문서: https://openapi-ts.dev/advanced                                                                                                                                                                                                    |
+| 2026-11-10 | 시험 하네스를 저장소에 넣고 CI에서 돈다                                                                           | 사용자 결정                                                                                                                                                                                                                                              |
+| 2026-11-10 | 로드맵은 영문 `ROADMAP.md`와 한글 `ROADMAP.ko.md`로 나눈다                                                        | 사용자 결정. README와 같은 방식                                                                                                                                                                                                                          |
+| 2026-11-10 | R4 토큰은 호스트별 저장. 기존 전역 토큰은 호스트 1개면 그 호스트로 옮기고, 2개 이상이면 보내지 않고 사용자가 고름 | npm·git·gh·curl 모두 호스트 단위 (https://docs.npmjs.com/cli/v10/configuring-npm/npmrc, https://git-scm.com/docs/gitcredentials)                                                                                                                         |
+| 2026-11-10 | YAML 파서 `yaml` 2.9.1 추가 (1.2.0)                                                                               | 재현된 결함 E1, springdoc·NestJS의 YAML 경로, 의존성 0개·ISC                                                                                                                                                                                             |
+| 2026-11-10 | CI 러너를 `ubuntu-24.04`로 고정                                                                                   | `ubuntu-latest`가 26.04로 바뀌어 Playwright 1.60이 Chromium을 설치하지 못함 (v1.1.1 CI 실패)                                                                                                                                                             |
+| 2026-11-10 | Open VSX 배포는 GitHub Actions(`publish-ovsx.yml`)에서 GitHub 릴리스에 첨부된 VSIX를 올린다                       | 토큰은 Actions 시크릿 `OVSX_PAT`. 릴리스와 같은 파일이 올라감                                                                                                                                                                                            |
+| 2026-11-10 | springdoc 그룹은 트리 노드로 보이고, swagger-config를 일반 후보 경로보다 먼저 확인                                | 기본 `/v3/api-docs`도 있으면 그룹을 놓치기 때문 (https://springdoc.org/properties.html)                                                                                                                                                                  |
+| 2026-11-11 | API를 탐색기 루트 폴더처럼 관리: 제목줄 ＋, 노드 우클릭 추가·이름 변경·주소 수정·주소 복사·제거, F2/Delete        | 탐색기는 루트 폴더 우클릭으로 폴더를 추가·제거한다 (https://code.visualstudio.com/docs/editing/workspaces/multi-root-workspaces). 확장은 트리 빈 공간에 메뉴를 붙일 수 없다: `view/title`, `view/item/context`만 있음 (VS Code `menusExtensionPoint.ts`) |
+| 2026-11-11 | `swaggerViewer.url`은 옮기지 않고 그대로 `specs`와 함께 표시                                                      | 옮기면 각 프로젝트의 `.vscode/settings.json`(팀과 공유될 수 있음)을 확장이 고치게 됨                                                                                                                                                                     |
+| 2026-11-11 | "메서드를 열면 최하단으로 감"은 재현 불가로 종료                                                                  | 실제 VS Code에서 Petstore 3·샘플 게이트웨이로 재현 안 됨 (`test/e2e/vscode-scroll.ts`), 사용자 확인                                                                                                                                                      |
 
 ## 출처
 

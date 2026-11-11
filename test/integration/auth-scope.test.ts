@@ -1,4 +1,5 @@
 // R4: credentials are scoped per host (npm/git/gh/curl convention) — a token for host A is never sent to host B.
+// Credentials are entered in the API settings tab (editor area), never in the top input box.
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -41,7 +42,21 @@ function register(...servers: TestServer[]) {
   }));
 }
 
-test("token set on host A's node is sent to A only; host B keeps its own Basic auth", async () => {
+const SETTINGS = "openapiExplorer.apiSettings";
+const lastInit = () => rec.posts.filter((m: any) => m.panel === SETTINGS && m.type === "init").at(-1)?.init;
+// Open a node's settings tab through `command`, then save it with `fields` (URL/name taken from the tab).
+async function saveSettings(command: string, node: any, fields: object) {
+  await rec.commands[command](node);
+  await waitFor(() => lastInit()?.key === node._specUrl);
+  const init = lastInit();
+  const tab = rec.panels.filter((p: any) => p.viewType === SETTINGS).at(-1);
+  await tab.send({
+    type: "saveAnyway",
+    data: { name: init.name, url: init.url, auth: "none", token: "", username: "", password: "", ...fields },
+  });
+}
+
+test("token saved in host A's settings is sent to A only; host B keeps its own Basic auth", async () => {
   register(A, B);
   const { context, secrets } = makeContext();
   secrets["swaggerViewer.basicAuth"] = JSON.stringify({
@@ -49,11 +64,8 @@ test("token set on host A's node is sent to A only; host B keeps its own Basic a
   });
   ext.activate(context);
   const [nodeA] = await rec.treeProvider.getChildren();
-
-  rec.answers.push("token-for-A");
-  await rec.commands["swaggerViewer.setToken"](nodeA);
+  await saveSettings("swaggerViewer.apiSettings", nodeA, { auth: "bearer", token: "token-for-A" });
   await loadAllSpecs();
-
   assert.ok(authOf(A).length > 0);
   assert.ok(
     authOf(A).every((h) => h === "Bearer token-for-A"),
@@ -64,28 +76,37 @@ test("token set on host A's node is sent to A only; host B keeps its own Basic a
     authOf(B).every((h) => h === basic),
     `B got ${authOf(B)}`
   );
+  assert.equal(rec.prompts.length, 0, "no top input box / quick pick");
 });
 
-test("clearToken on host A's node removes only A's token", async () => {
-  register(A, B);
+test("Set Auth Token / Set Username & Password open the settings tab on the auth section", async () => {
+  register(A);
   const { context } = makeContext();
   ext.activate(context);
-  const [nodeA, nodeB] = await rec.treeProvider.getChildren();
-  rec.answers.push("tA");
+  const [nodeA] = await rec.treeProvider.getChildren();
   await rec.commands["swaggerViewer.setToken"](nodeA);
-  rec.answers.push("tB");
-  await rec.commands["swaggerViewer.setToken"](nodeB);
-  await rec.commands["swaggerViewer.clearToken"](nodeA);
+  await waitFor(() => lastInit());
+  assert.deepEqual({ auth: lastInit().auth, focus: lastInit().focus }, { auth: "bearer", focus: "auth" });
+  await saveSettings("swaggerViewer.setBasicAuth", nodeA, { auth: "basic", username: "u", password: "p" });
+  await loadAllSpecs();
+  const basic = "Basic " + Buffer.from("u:p").toString("base64");
+  assert.ok(authOf(A).length > 0 && authOf(A).every((h) => h === basic), `A got ${authOf(A)}`);
+});
+
+test("choosing 'None' in settings removes the host's credentials", async () => {
+  register(A);
+  const { context } = makeContext();
+  ext.activate(context);
+  const [nodeA] = await rec.treeProvider.getChildren();
+  await saveSettings("swaggerViewer.apiSettings", nodeA, { auth: "bearer", token: "t" });
+  await saveSettings("swaggerViewer.apiSettings", (await rec.treeProvider.getChildren())[0], {
+    auth: "none",
+  });
   A.requests.length = 0;
-  B.requests.length = 0;
   await loadAllSpecs();
   assert.ok(
     authOf(A).every((h) => h === undefined),
     `A got ${authOf(A)}`
-  );
-  assert.ok(
-    authOf(B).every((h) => h === "Bearer tB"),
-    `B got ${authOf(B)}`
   );
 });
 
@@ -103,8 +124,7 @@ test("legacy global token with several hosts is not sent anywhere until the user
   register(A, B);
   const { context, secrets } = makeContext();
   secrets[LEGACY_KEY] = "legacy";
-  // User dismisses the notification first.
-  rec.answers.push(undefined);
+  rec.answers.push(undefined); // dismiss the notification
   ext.activate(context);
   await waitFor(() => rec.msgs.length > 0);
   await loadAllSpecs();
@@ -119,12 +139,17 @@ test("legacy global token with several hosts is not sent anywhere until the user
   assert.equal(secrets[LEGACY_KEY], "legacy", "legacy value is kept until the user decides");
 });
 
-test("legacy global token: picking host A from the notification assigns it to A only", async () => {
+test("legacy global token: Choose hosts opens the first API's settings on its auth section; 'Use for this API' assigns it there only", async () => {
   register(A, B);
   const { context, secrets } = makeContext();
   secrets[LEGACY_KEY] = "legacy";
-  rec.answers.push("Choose hosts", [hostOf(A.origin)]);
+  rec.answers.push("Choose hosts");
   ext.activate(context);
+  await waitFor(() => lastInit()?.legacyToken === true);
+  assert.equal(lastInit().focus, "auth");
+  assert.equal(lastInit().url, `${A.origin}/v3/api-docs`);
+  const tab = rec.panels.filter((p: any) => p.viewType === SETTINGS).at(-1);
+  await tab.send({ type: "useLegacy" });
   await waitFor(() => secrets[LEGACY_KEY] === undefined);
   await loadAllSpecs();
   assert.ok(authOf(A).length > 0 && authOf(A).every((h) => h === "Bearer legacy"), `A got ${authOf(A)}`);
@@ -132,4 +157,17 @@ test("legacy global token: picking host A from the notification assigns it to A 
     authOf(B).every((h) => h === undefined),
     `B got ${authOf(B)}`
   );
+  assert.equal(rec.prompts.length, 0, "no quick pick");
+});
+
+test("while a legacy token exists, every API's settings tab offers it (legacyToken)", async () => {
+  register(A, B);
+  const { context, secrets } = makeContext();
+  secrets[LEGACY_KEY] = "legacy";
+  rec.answers.push(undefined);
+  ext.activate(context);
+  const [, nodeB] = await rec.treeProvider.getChildren();
+  await rec.commands["swaggerViewer.apiSettings"](nodeB);
+  await waitFor(() => lastInit()?.key === nodeB._specUrl);
+  assert.equal(lastInit().legacyToken, true);
 });

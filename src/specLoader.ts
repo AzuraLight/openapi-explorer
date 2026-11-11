@@ -177,6 +177,12 @@ export async function resolveSpec(inputUrl: string, opts: ResolveOptions): Promi
   const first = await fetcher(inputUrl);
   tried.push(`${inputUrl} → ${first.status}`);
   noteAuth(first.status);
+  // The URL itself needs a login: say so rather than falling back to some other spec on the host.
+  if (first.status === 401 || first.status === 403) {
+    throw new Error(
+      `Login required (HTTP ${first.status}). Add a Bearer token or username & password in the API's settings (right-click the API → API Settings).\nTried: ${tried.join(", ")}`
+    );
+  }
   if (first.ok) {
     const parsed = tryParse(first.body);
     if (parsed) return cacheAndReturn(inputUrl, inputUrl, parsed, tried);
@@ -219,7 +225,7 @@ export async function resolveSpec(inputUrl: string, opts: ResolveOptions): Promi
   }
   if (authStatus) {
     throw new Error(
-      `Login required (HTTP ${authStatus}). Set your username/password via 'OpenAPI: Set Username & Password'.\nTried: ${tried.join(", ")}`
+      `Login required (HTTP ${authStatus}). Add a Bearer token or username & password in the API's settings (right-click the API → API Settings).\nTried: ${tried.join(", ")}`
     );
   }
   throw new Error(`OpenAPI spec not found.\nTried: ${tried.join(", ")}`);

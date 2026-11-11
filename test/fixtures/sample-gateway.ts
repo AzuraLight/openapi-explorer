@@ -212,7 +212,29 @@ export function startSampleGateway(
   for (const g of Object.keys(groups))
     routes[`/v3/api-docs/${g}`] = () => ({ type: "application/json", body: JSON.stringify(groups[g]) });
   const server = http.createServer((req, res) => {
-    const r = routes[(req.url || "").split("?")[0]];
+    const pathOnly = (req.url || "").split("?")[0];
+    const r = routes[pathOnly];
+    // Try it out: answer the sample API paths with believable data (envelope like the spec says).
+    if (!r && pathOnly.startsWith("/api/v1/")) {
+      res.setHeader("content-type", "application/json");
+      if (req.method === "DELETE") {
+        res.statusCode = 204;
+        res.end();
+        return;
+      }
+      const one = (id: number) => ({
+        id,
+        name: ["홍길동", "김민지", "이서준"][id % 3],
+        status: "ACTIVE",
+        createdAt: new Date(Date.UTC(2026, 10, 1 + id, 9)).toISOString(),
+        detail: { memo: null, tags: ["beginner"], meta: { cohort: "2026-11" } },
+        items: [{ seq: 1, title: "OT", score: 92.5 }],
+      });
+      const idMatch = /\/(\d+)(?:\/|$)/.exec(pathOnly);
+      const data = idMatch ? one(Number(idMatch[1])) : [one(1), one(2), one(3)];
+      res.end(JSON.stringify({ success: true, data, error: null }, null, 2));
+      return;
+    }
     if (!r) {
       res.statusCode = 404;
       res.end();

@@ -7,7 +7,17 @@
 A VS Code / Cursor extension that turns a live Swagger/OpenAPI spec into a sidebar
 tree plus an embedded Swagger UI — no more opening the docs page in Chrome.
 
-![OpenAPI Explorer](media/icon.png)
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/overview-light.png">
+  <img src="docs/images/overview-dark.png" alt="OpenAPI Explorer: a gateway's springdoc groups, tags and endpoints in the sidebar tree, and the selected GET endpoint opened in the embedded Swagger UI beside it with Try it out filled in">
+</picture>
+
+![Clicking an endpoint in the tree opens it in Swagger UI, then Try it out sends the request through the extension and shows the JSON response](docs/images/tour.gif)
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/add-api-light.png">
+  <img src="docs/images/add-api-dark.png" width="640" alt="Adding an API: a New API node in the tree and its settings tab in the editor with the spec URL and a Bearer token filled in">
+</picture>
 
 ## Features
 
@@ -23,7 +33,8 @@ tree plus an embedded Swagger UI — no more opening the docs page in Chrome.
 - **Endpoint search palette** — fuzzy search by method / path / summary, then jump to it.
 - **Code generation** — right-click a tree item to copy the response type (TypeScript, with
   dependent models, JSDoc, and envelope unwrapping), a `fetch` / `axios` client function, or cURL.
-- **Multiple gateways** — register several specs in `swaggerViewer.specs` and switch per service.
+- **Multiple gateways, managed like Explorer folders** — ＋ / right-click **Add API**, **Rename**, **Edit URL**,
+  **Remove API**; stored in `swaggerViewer.specs`.
 - **UI URL auto-discovery** — paste a `.../api-docs` (Swagger UI page) URL and the real spec
   (`/api-docs-json`, `/v3/api-docs`, `-yaml`, …) is discovered automatically. springdoc groups
   (`/v3/api-docs/swagger-config`) appear as one node per group.
@@ -34,7 +45,11 @@ tree plus an embedded Swagger UI — no more opening the docs page in Chrome.
 
 ## Usage
 
-1. Run **OpenAPI: Set URL** and paste your spec or docs-page URL (`.../api-docs` works).
+1. Click **＋ Add API** in the OpenAPI view (or right-click an API → **Add API…**). A **New API** node appears
+   and its settings tab opens in the editor: enter the spec or docs-page URL (`.../api-docs` works), an optional
+   name, and a Bearer token or username & password if the spec needs one, then **Save** (or **Test Connection**
+   first). The name defaults to the spec's title; closing the tab without saving removes the New API node.
+   Right-click an API for **API Settings…** (`F2`), **Copy URL** or **Remove API** (`Delete` / `⌘⌫`).
 2. Browse the tree, or hit **OpenAPI: Search Endpoints** (`Cmd/Ctrl+Alt+/`).
 3. Click an endpoint to open it in Swagger UI; right-click for code generation.
 
