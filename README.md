@@ -35,8 +35,9 @@ tree plus an embedded Swagger UI — no more opening the docs page in Chrome.
 
 ## Usage
 
-1. Click **＋ Add API** in the OpenAPI view (or right-click an API → **Add API…**) and paste your spec or
-   docs-page URL (`.../api-docs` works). The URL is checked right away and the name is taken from the spec.
+1. Click **＋ Add API** in the OpenAPI view (or right-click an API → **Add API…**) and type your spec or
+   docs-page URL (`.../api-docs` works) in the inline input above the tree. Enter checks it right away and the
+   name is taken from the spec.
    Right-click an API to **Rename** (`F2`), **Edit URL**, **Copy URL** or **Remove API** (`Delete` / `⌘⌫`).
 2. Browse the tree, or hit **OpenAPI: Search Endpoints** (`Cmd/Ctrl+Alt+/`).
 3. Click an endpoint to open it in Swagger UI; right-click for code generation.

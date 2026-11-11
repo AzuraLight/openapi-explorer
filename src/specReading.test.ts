@@ -343,3 +343,16 @@ test("Swagger UI servers: relative → absolute, {variables} kept for Swagger UI
     "https://gw.example.com/x/v1"
   );
 });
+
+test("a login-protected URL reports 'Login required' instead of falling back to another spec on the host", async () => {
+  clearCache();
+  await assert.rejects(
+    resolveSpec("https://l.example.com/secured/v3/api-docs", {
+      fetcher: fetcherOf({
+        "https://l.example.com/secured/v3/api-docs": { status: 401, body: "" },
+        "https://l.example.com/v3/api-docs": { body: JSON.stringify({ openapi: "3.0.0", info: { title: "Other" }, paths: {} }) },
+      }),
+    }),
+    /Login required \(HTTP 401\)/
+  );
+});

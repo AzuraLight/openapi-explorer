@@ -12,6 +12,7 @@ import {
 } from "./model";
 import { openSwaggerUi, type FocusTarget } from "./swaggerUi";
 import { createHttpFetcher, type HttpOptions } from "./http";
+import { ApiInputView, INPUT_VIEW_ID } from "./apiInputView";
 
 // Credentials are stored per host (like npm/git/gh) so a credential is only ever sent to its own host.
 const SECRET_TOKEN_KEY = "swaggerViewer.bearerTokens"; // { [host]: token }
@@ -541,81 +542,102 @@ export function activate(context: vscode.ExtensionContext): void {
     return true;
   }
 
-  // Scan a URL for a spec, with a progress notification. Returns the result or the error.
   async function scan(url: string): Promise<{ res?: ResolveResult; error?: Error }> {
-    return vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Looking for an OpenAPI spec at {0}…", url) },
-      async () => {
-        try {
-          return { res: await ensureSpec(context, url, true) };
-        } catch (e: any) {
-          return { error: e instanceof Error ? e : new Error(String(e)) };
-        }
-      }
-    );
+    try {
+      return { res: await ensureSpec(context, url, true) };
+    } catch (e: any) {
+      return { error: e instanceof Error ? e : new Error(String(e)) };
+    }
   }
 
-  // Add API (like "Add Folder to Workspace"): URL first — prefilled from the clipboard and scanned
-  // right away — then a display name prefilled from the spec's title.
+  // Inline input above the tree (instead of the top input box) for Add / Rename / Edit URL.
+  const input = new ApiInputView((msg) => onInputMessage(msg));
+
+  async function finishAdd(url: string, res?: ResolveResult): Promise<void> {
+    const name = res?.spec.info?.title || hostOf(url);
+    const cfg = vscode.workspace.getConfiguration("swaggerViewer");
+    const i = cfg.inspect<SpecConfig[]>("specs");
+    const target = i?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : configTarget();
+    const current = (target === vscode.ConfigurationTarget.Workspace ? i?.workspaceValue : i?.globalValue) || [];
+    await cfg.update("specs", [...current, { name, url }], target);
+    await input.close();
+    resetCaches();
+    const node = (await provider.getChildren()).find((n) => n._specUrl === url);
+    if (node) await treeView.reveal(node, { select: true, focus: true, expand: true });
+  }
+
+  function scanError(url: string, error: Error): void {
+    const loginNeeded = /Login required/.test(error.message);
+    input.post({
+      type: "error",
+      text: loginNeeded
+        ? vscode.l10n.t("{0} requires a login.", url)
+        : vscode.l10n.t("No OpenAPI spec found at {0}.", url),
+      detail: error.message,
+      actions: loginNeeded ? ["login", "edit"] : ["saveAnyway", "edit"],
+    });
+  }
+
+  async function onInputMessage(msg: any): Promise<void> {
+    const req = input.current;
+    if (!req) return;
+    if (msg?.type === "cancel") return input.close();
+
+    if (msg?.type === "submit") {
+      const value = String(msg.value ?? "").trim();
+      if (req.mode === "rename") {
+        if (!value) return input.post({ type: "error", text: vscode.l10n.t("Enter a name"), actions: [] });
+        await updateEntry(req.target!, (e) => ({ ...e, name: value }));
+        await input.close();
+        return resetCaches();
+      }
+      if (!isHttpUrl(value)) {
+        return input.post({ type: "error", text: vscode.l10n.t("Enter an http(s) URL"), actions: [] });
+      }
+      if (specEntries().some((e) => e.url === value && e.url !== req.target)) {
+        return input.post({ type: "error", text: vscode.l10n.t("This API is already registered: {0}", value), actions: [] });
+      }
+      if (req.mode === "editUrl") {
+        if (value !== req.target) await updateEntry(req.target!, (e) => ({ ...e, url: value }));
+        await input.close();
+        return resetCaches();
+      }
+      req.pendingUrl = value;
+      input.post({ type: "busy", text: vscode.l10n.t("Looking for an OpenAPI spec at {0}…", value) });
+      const { res, error } = await scan(value);
+      return error ? scanError(value, error) : finishAdd(value, res);
+    }
+
+    if (req.mode !== "add" || !req.pendingUrl) return;
+    const url = req.pendingUrl;
+    if (msg?.type === "saveAnyway") return finishAdd(url);
+    if (msg?.type === "login") {
+      const username = String(msg.username ?? "");
+      const password = String(msg.password ?? "");
+      if (!username) {
+        return input.post({ type: "error", text: vscode.l10n.t("Enter a username"), actions: ["login", "edit"] });
+      }
+      // Keep the credentials only if they work.
+      const host = hostOf(url);
+      const map = await readBasicAuthMap(context);
+      const previous = map[host];
+      map[host] = { username, password };
+      await writeBasicAuthMap(context, map);
+      input.post({ type: "busy", text: vscode.l10n.t("Looking for an OpenAPI spec at {0}…", url) });
+      const { res, error } = await scan(url);
+      if (!error) return finishAdd(url, res);
+      const restore = await readBasicAuthMap(context);
+      if (previous) restore[host] = previous;
+      else delete restore[host];
+      await writeBasicAuthMap(context, restore);
+      return scanError(url, error);
+    }
+  }
+
+  // Add API (like "Add Folder to Workspace"): opens the inline input, prefilled with a URL on the clipboard.
   async function addApi(): Promise<void> {
     const clip = ((await vscode.env.clipboard.readText()) || "").trim();
-    let value = isHttpUrl(clip) ? clip : "";
-    for (;;) {
-      const input = await vscode.window.showInputBox({
-        title: vscode.l10n.t("Add API (1/2)"),
-        prompt: vscode.l10n.t("Spec URL — a Swagger UI page address (e.g. .../api-docs) works too"),
-        placeHolder: "https://api.example.com/v3/api-docs",
-        value,
-        ignoreFocusOut: true,
-        validateInput: (v) => (isHttpUrl(v.trim()) ? undefined : vscode.l10n.t("Enter an http(s) URL")),
-      });
-      if (!input) return;
-      const url = input.trim();
-      if (specEntries().some((e) => e.url === url)) {
-        vscode.window.showWarningMessage(vscode.l10n.t("This API is already registered: {0}", url));
-        return;
-      }
-      let { res, error } = await scan(url);
-      if (error) {
-        const loginNeeded = /Login required/.test(error.message);
-        const editUrl = vscode.l10n.t("Edit URL");
-        const saveAnyway = vscode.l10n.t("Save Anyway");
-        const saveAndLogIn = vscode.l10n.t("Save and Log In");
-        const pick = await vscode.window.showErrorMessage(
-          loginNeeded
-            ? vscode.l10n.t("{0} requires a login.", url)
-            : vscode.l10n.t("No OpenAPI spec found at {0}.", url),
-          { modal: false, detail: error.message },
-          ...(loginNeeded ? [saveAndLogIn, editUrl] : [editUrl, saveAnyway])
-        );
-        if (pick === editUrl) {
-          value = url;
-          continue;
-        }
-        if (pick === saveAndLogIn) {
-          if (await setBasicAuth({ _specUrl: url } as Node)) ({ res } = await scan(url));
-        } else if (pick !== saveAnyway) {
-          return;
-        }
-      }
-      const fallbackName = res?.spec.info?.title || hostOf(url);
-      const named = await vscode.window.showInputBox({
-        title: vscode.l10n.t("Add API (2/2)"),
-        prompt: vscode.l10n.t("Display name"),
-        value: fallbackName,
-        ignoreFocusOut: true,
-      });
-      const name = named?.trim() || fallbackName;
-      const cfg = vscode.workspace.getConfiguration("swaggerViewer");
-      const i = cfg.inspect<SpecConfig[]>("specs");
-      const target = i?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : configTarget();
-      const current = (target === vscode.ConfigurationTarget.Workspace ? i?.workspaceValue : i?.globalValue) || [];
-      await cfg.update("specs", [...current, { name, url }], target);
-      resetCaches();
-      const node = (await provider.getChildren()).find((n) => n._specUrl === url);
-      if (node) await treeView.reveal(node, { select: true, focus: true, expand: true });
-      return;
-    }
+    await input.open({ mode: "add", value: isHttpUrl(clip) ? clip : "" });
   }
 
   // Rename / Edit URL / Copy URL / Remove target: the clicked node, or (keyboard) the selected one.
@@ -628,29 +650,13 @@ export function activate(context: vscode.ExtensionContext): void {
     const n = apiNodeOf(arg);
     if (!n) return;
     const current = specEntries().find((e) => e.url === n._specUrl);
-    const name = await vscode.window.showInputBox({
-      prompt: vscode.l10n.t("New display name"),
-      value: current?.name ?? String(n.label ?? ""),
-      ignoreFocusOut: true,
-    });
-    if (!name?.trim()) return;
-    await updateEntry(n._specUrl!, (e) => ({ ...e, name: name.trim() }));
-    resetCaches();
+    await input.open({ mode: "rename", value: current?.name ?? String(n.label ?? ""), target: n._specUrl });
   }
 
   async function editApiUrl(arg?: Node): Promise<void> {
     const n = apiNodeOf(arg);
     if (!n) return;
-    const input = await vscode.window.showInputBox({
-      prompt: vscode.l10n.t("Spec URL — a Swagger UI page address (e.g. .../api-docs) works too"),
-      value: n._specUrl,
-      ignoreFocusOut: true,
-      validateInput: (v) => (isHttpUrl(v.trim()) ? undefined : vscode.l10n.t("Enter an http(s) URL")),
-    });
-    const url = input?.trim();
-    if (!url || url === n._specUrl) return;
-    await updateEntry(n._specUrl!, (e) => ({ ...e, url }));
-    resetCaches();
+    await input.open({ mode: "editUrl", value: n._specUrl!, target: n._specUrl });
   }
 
   async function removeApi(arg?: Node): Promise<void> {
@@ -662,6 +668,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     treeView,
+    vscode.window.registerWebviewViewProvider(INPUT_VIEW_ID, input),
     vscode.commands.registerCommand("swaggerViewer.addApi", () => addApi()),
     vscode.commands.registerCommand("swaggerViewer.renameApi", (arg?: Node) => renameApi(arg)),
     vscode.commands.registerCommand("swaggerViewer.editApiUrl", (arg?: Node) => editApiUrl(arg)),
@@ -678,9 +685,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("swaggerViewer.copyCurl", (node: Node) => copyForNode(context, node, "curl")),
 
     vscode.commands.registerCommand("swaggerViewer.refresh", async () => {
-      clearCache();
-      specCache.clear();
-      provider.refresh();
+      resetCaches();
       vscode.window.showInformationMessage(vscode.l10n.t("Swagger refreshed."));
     }),
 
@@ -829,11 +834,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
 
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration("swaggerViewer")) {
-        specCache.clear();
-        clearCache();
-        provider.refresh();
-      }
+      if (e.affectsConfiguration("swaggerViewer")) resetCaches();
     })
   );
 

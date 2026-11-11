@@ -20,6 +20,11 @@ const fresh = () => ({
   selection: [], // TreeView.selection
   revealed: [], // elements passed to TreeView.reveal
   progress: [], // withProgress titles
+  context: {}, // setContext keys
+  executed: [], // executeCommand calls (id, ...args)
+  viewProviders: {}, // registerWebviewViewProvider
+  views: {}, // resolved webview views by id
+  viewPosts: [], // messages the extension posted to webview views
 });
 const rec = (global.__rec = fresh());
 
@@ -67,6 +72,39 @@ function message(prefix, m, items) {
   const actions = items.filter((i) => typeof i === "string" || (i && i.title));
   if (!actions.length) return Promise.resolve(undefined);
   return Promise.resolve(rec.answers.shift());
+}
+
+// A resolved WebviewView (sidebar HTML view). `send` delivers a message from the view to the extension.
+async function resolveView(id) {
+  if (rec.views[id]) return rec.views[id];
+  const provider = rec.viewProviders[id];
+  if (!provider) return undefined;
+  let onMsg = null;
+  const disposeListeners = [];
+  const view = {
+    visible: true,
+    webview: {
+      options: {},
+      cspSource: "file:",
+      asWebviewUri: (u) => ({ toString: () => "file://" + u.fsPath }),
+      html: "",
+      onDidReceiveMessage: (f) => {
+        onMsg = f;
+        return { dispose() {} };
+      },
+      postMessage: (m) => {
+        rec.viewPosts.push({ view: id, ...m });
+        return Promise.resolve(true);
+      },
+    },
+    show: () => {},
+    onDidDispose: (f) => (disposeListeners.push(f), { dispose() {} }),
+    onDidChangeVisibility: () => ({ dispose() {} }),
+    send: async (m) => onMsg && (await onMsg(m)),
+  };
+  rec.views[id] = view;
+  await provider.resolveWebviewView(view, {}, { isCancellationRequested: false });
+  return view;
 }
 
 function createWebviewPanel(_viewType, title) {
@@ -124,6 +162,7 @@ const cfgGet = (section) => ({
 module.exports = {
   __rec: rec,
   __reset,
+  __resolveView: resolveView,
   EventEmitter,
   TreeItem,
   ThemeIcon,
@@ -145,6 +184,10 @@ module.exports = {
         reveal: async (el, opts) => void rec.revealed.push({ el, opts }),
         dispose() {},
       };
+    },
+    registerWebviewViewProvider: (id, provider) => {
+      rec.viewProviders[id] = provider;
+      return { dispose() {} };
     },
     withProgress: async (options, task) => {
       rec.progress.push(options.title);
@@ -169,6 +212,14 @@ module.exports = {
     registerCommand: (id, f) => {
       rec.commands[id] = f;
       return { dispose() {} };
+    },
+    // setContext is recorded; "<viewId>.focus" resolves that webview view like VS Code does.
+    executeCommand: async (id, ...args) => {
+      rec.executed.push([id, ...args]);
+      if (id === "setContext") rec.context[args[0]] = args[1];
+      const m = /^(.+)\.focus$/.exec(id);
+      if (m) await resolveView(m[1]);
+      if (rec.commands[id]) return rec.commands[id](...args);
     },
   },
   workspace: {

@@ -8,11 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
-- **Manage APIs like folders in the Explorer.** ＋ in the view title, or right-click an API → **Add API…**,
-  **Rename** (`F2`), **Edit URL…**, **Copy URL**, **Remove API** (`Delete` / `⌘⌫`). Adding takes the URL first
-  (prefilled from the clipboard, and the input stays open while you copy it), checks it right away, offers
-  **Save and Log In** when the URL needs a login, and prefills the name from the spec's title. Edits are
-  written back to the settings scope (workspace or user) that holds the entry.
+- **Manage APIs like folders in the Explorer.** With nothing registered the view shows a short message and an
+  **Add API** button, like the Explorer with no folder open. ＋ in the view title, or right-click an API →
+  **Add API…**, **Rename** (`F2`), **Edit URL…**, **Copy URL**, **Remove API** (`Delete` / `⌘⌫`). Adding,
+  renaming and editing happen in a small inline input above the tree instead of the top input box: Enter checks
+  the URL right away, errors and the username/password for login-protected specs appear inline, and the new API
+  is named from the spec's title. Edits are written back to the settings scope (workspace or user) that holds
+  the entry.
+
 - **YAML specs.** Specs are parsed as JSON or YAML regardless of the content type. Discovery also
   tries the YAML paths of springdoc (`/v3/api-docs.yaml`) and NestJS (`/{path}-yaml`). YAML alias
   expansion is capped (`maxAliasCount: 100`), so alias bombs are rejected.
@@ -27,6 +30,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- A spec URL that answers `401`/`403` now reports "Login required" instead of silently falling back to
+  another spec on the same host.
 - Path-level `parameters` now apply to every operation under the path; an operation parameter with
   the same name and location overrides it.
 - Swagger 2.0: `in: body` and `in: formData` parameters become the request body (content type from

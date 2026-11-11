@@ -55,9 +55,17 @@
     "views": {
       "swaggerViewer": [
         {
+          "type": "webview",
+          "id": "swaggerApiInput",
+          "name": "%view.apiInput%",
+          "when": "swaggerViewer.inputOpen",
+          "initialSize": 1
+        },
+        {
           "id": "swaggerExplorer",
           "name": "%view.explorer%",
-          "icon": "media/openapi.svg"
+          "icon": "media/openapi.svg",
+          "initialSize": 5
         }
       ]
     },
