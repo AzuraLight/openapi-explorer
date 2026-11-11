@@ -16,6 +16,7 @@ const base: SettingsInit = {
   hasToken: false,
   hasPassword: false,
   legacyToken: false,
+  sharedWith: [],
 };
 
 async function load(page: Page, init: SettingsInit = base) {

@@ -42,6 +42,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- API settings edge cases found by testing and an independent review: saving twice quickly no longer adds the
+  API twice; cancelling while a save is checking the URL no longer saves it; changing an API's URL to another
+  host carries its credentials over; Test Connection no longer writes the stored secrets (it used to put trial
+  values there briefly); Bearer with no token is reported; a URL with or without a trailing `/` counts as the
+  same API; a removed API's unsaved draft is dropped; editing an API that was removed meanwhile is reported; a
+  new API is added to the user-settings list when that is where the list lives; a clipboard URL containing
+  credentials is not prefilled. The tab notes when credentials are shared with other APIs on the same host.
 - Response JSON in Swagger UI was unreadable in light themes (VS Code's default webview `code` color made it
   dark-on-dark).
 - A spec URL that answers `401`/`403` now reports "Login required" instead of silently falling back to

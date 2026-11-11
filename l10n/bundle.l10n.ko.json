@@ -52,5 +52,8 @@
   "Unsaved changes restored.": "저장하지 않은 변경을 되살렸습니다.",
   "The saved token is now used for {0}.": "저장된 토큰을 이제 {0}에 사용합니다.",
   "Reopen": "다시 열기",
-  "Unsaved changes to {0} were kept.": "{0}의 저장하지 않은 변경을 보관했습니다."
+  "Unsaved changes to {0} were kept.": "{0}의 저장하지 않은 변경을 보관했습니다.",
+  "Enter a token": "토큰을 입력하세요",
+  "This API was removed from the settings meanwhile.": "그사이 설정에서 이 API가 삭제되었습니다.",
+  "These credentials are saved per host and also apply to:": "인증 정보는 호스트별로 저장되어 다음 API에도 함께 적용됩니다:"
 }

@@ -38,13 +38,25 @@ export interface SettingsInit {
   hasToken: boolean; // a token is saved for this host
   hasPassword: boolean;
   legacyToken: boolean; // a pre-1.1.1 host-less token is waiting to be assigned
+  sharedWith: string[]; // other APIs on the same host (credentials are per host)
   focus?: "name" | "url" | "auth";
   draft?: SettingsData; // unsaved changes kept from a tab that was closed
 }
 
+// Set when the tab is closed while an operation runs, so a save in flight is not committed.
+export interface CancelSignal {
+  cancelled: boolean;
+}
+
 export interface SettingsHandlers {
-  // Return true when the API was saved (the tab then closes).
-  save(init: SettingsInit, data: SettingsData, anyway: boolean, post: (m: object) => void): Promise<boolean>;
+  // Return true when the API was saved (the tab then closes). Must not commit once signal.cancelled.
+  save(
+    init: SettingsInit,
+    data: SettingsData,
+    anyway: boolean,
+    post: (m: object) => void,
+    signal: CancelSignal
+  ): Promise<boolean>;
   test(init: SettingsInit, data: SettingsData, post: (m: object) => void): Promise<void>;
   // Assign the legacy token to this API; returns the fields of init that changed.
   useLegacy(init: SettingsInit, post: (m: object) => void): Promise<Partial<SettingsInit> | undefined>;
@@ -55,7 +67,10 @@ export interface SettingsHandlers {
 export const SETTINGS_VIEW_TYPE = "openapiExplorer.apiSettings";
 
 export class ApiSettingsPanels {
-  private readonly open = new Map<string, { panel: vscode.WebviewPanel; init: SettingsInit }>();
+  private readonly open = new Map<
+    string,
+    { panel: vscode.WebviewPanel; init: SettingsInit; discard: boolean; post: (m: object) => void }
+  >();
 
   constructor(private readonly handlers: SettingsHandlers) {}
 
@@ -79,10 +94,12 @@ export class ApiSettingsPanels {
     );
     panel.iconPath = new vscode.ThemeIcon("gear");
     let saved = false;
+    let busy = false; // one save / test / useLegacy at a time (Enter pressed twice, double click)
+    const signal: CancelSignal = { cancelled: false };
     let draft: SettingsData | undefined = init.draft;
-    const entry = { panel, init };
-    this.open.set(init.key, entry);
     const post = (m: object) => void panel.webview.postMessage(m);
+    const entry = { panel, init, discard: false, post };
+    this.open.set(init.key, entry);
     const setDirty = (dirty: boolean) => (panel.title = dirty ? `● ${baseTitle}` : baseTitle);
     if (init.draft) setDirty(true);
     panel.webview.html = render(panel.webview.cspSource);
@@ -93,32 +110,51 @@ export class ApiSettingsPanels {
         draft = msg.dirty ? sanitize(msg.data) : undefined;
         return setDirty(!!msg.dirty);
       }
-      if (msg?.type === "useLegacy") {
-        const changed = await this.handlers.useLegacy(entry.init, post);
-        if (changed) {
-          entry.init = { ...entry.init, ...changed, draft: undefined };
-          post({ type: "update", init: entry.init });
+      if (!["useLegacy", "test", "save", "saveAnyway"].includes(msg?.type) || busy) return;
+      busy = true;
+      try {
+        if (msg.type === "useLegacy") {
+          const changed = await this.handlers.useLegacy(entry.init, post);
+          if (changed) {
+            entry.init = { ...entry.init, ...changed, draft: undefined };
+            post({ type: "update", init: entry.init });
+          }
+          return;
         }
-        return;
-      }
-      const data = sanitize(msg?.data);
-      if (msg?.type === "test") return this.handlers.test(entry.init, data, post);
-      if (msg?.type === "save" || msg?.type === "saveAnyway") {
-        if (await this.handlers.save(entry.init, data, msg.type === "saveAnyway", post)) {
+        const data = sanitize(msg.data);
+        if (msg.type === "test") return await this.handlers.test(entry.init, data, post);
+        if (await this.handlers.save(entry.init, data, msg.type === "saveAnyway", post, signal)) {
           saved = true;
           panel.dispose();
         }
+      } finally {
+        busy = false;
       }
     });
     panel.onDidDispose(() => {
+      signal.cancelled = true;
       this.open.delete(init.key);
-      this.handlers.closed(entry.init, saved, saved ? undefined : draft);
+      this.handlers.closed(entry.init, saved, saved || entry.discard ? undefined : draft);
     });
     post({ type: "init", init, strings: str });
   }
 
-  close(key: string): void {
-    this.open.get(key)?.panel.dispose();
+  // discard: the API itself is going away (Remove API), so unsaved changes are not kept.
+  close(key: string, discard = false): void {
+    const e = this.open.get(key);
+    if (!e) return;
+    e.discard = discard;
+    e.panel.dispose();
+  }
+
+  // Apply changes to every open tab (e.g. the legacy token was assigned elsewhere).
+  updateAll(change: (init: SettingsInit) => Partial<SettingsInit> | undefined): void {
+    for (const e of this.open.values()) {
+      const c = change(e.init);
+      if (!c) continue;
+      e.init = { ...e.init, ...c, draft: undefined };
+      e.post({ type: "update", init: e.init });
+    }
   }
 }
 
@@ -143,7 +179,9 @@ function strings() {
     newTitle: t("New API"),
     heading: t("API Settings"),
     url: t("Spec URL"),
-    urlHint: t("A spec URL or a Swagger UI page address (e.g. .../api-docs). The real spec is found automatically."),
+    urlHint: t(
+      "A spec URL or a Swagger UI page address (e.g. .../api-docs). The real spec is found automatically."
+    ),
     name: t("Display name"),
     nameHint: t("Leave empty to use the spec's title."),
     auth: t("Authentication"),
@@ -172,11 +210,14 @@ function strings() {
     cancel: t("Cancel"),
     saveAnyway: t("Save Anyway"),
     restored: t("Unsaved changes restored."),
+    shared: t("These credentials are saved per host and also apply to:"),
   };
 }
 
 function render(cspSource: string): string {
-  const nonce = randomBytes(16).toString("base64").replace(/[^A-Za-z0-9]/g, "");
+  const nonce = randomBytes(16)
+    .toString("base64")
+    .replace(/[^A-Za-z0-9]/g, "");
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -252,6 +293,7 @@ function render(cspSource: string): string {
       <div class="secret"><input id="password" type="password" autocomplete="current-password"><button class="eye" id="eyePassword" type="button" aria-pressed="false"></button></div>
     </div>
     <div class="hint" id="authHint"></div>
+    <div class="hint" id="sharedHint" hidden></div>
   </fieldset>
   <div class="row">
     <button id="save" class="btn primary"></button>
@@ -340,6 +382,9 @@ function render(cspSource: string): string {
     savedRow("savedToken", "token", !!i.hasToken, S.savedToken, S.newToken, S.token);
     savedRow("savedPassword", "password", !!i.hasPassword, S.savedPassword, S.newPassword, S.password);
     $("legacy").hidden = !i.legacyToken || i.isNew;
+    const shared = i.sharedWith || [];
+    $("sharedHint").hidden = shared.length === 0;
+    $("sharedHint").textContent = shared.length ? S.shared + " " + shared.join(", ") : "";
     showAuth();
   }
 
