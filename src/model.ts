@@ -1,5 +1,6 @@
 // Spec → structuring + TS type / cURL generation
 import { resolveRef, getSchemas } from "./specLoader";
+import { resolveBaseUrl } from "./servers";
 import type {
   OpenApiSpec,
   Schema,
@@ -60,39 +61,99 @@ export function groupByTag(spec: OpenApiSpec): Map<string, EndpointSummary[]> {
   return groups;
 }
 
+// Resolve a Reference Object. Its own summary/description override the target's
+// (OAS 3.1 Reference Object: "SHOULD override that of the referenced component").
+function deref<T extends object>(spec: OpenApiSpec, obj: T & { $ref?: string }): T {
+  if (!obj || !obj.$ref) return obj;
+  const target = resolveRef(spec, obj.$ref) as T | null;
+  if (!target) return obj;
+  const o = obj as { summary?: string; description?: string };
+  return {
+    ...target,
+    ...(o.summary !== undefined ? { summary: o.summary } : {}),
+    ...(o.description !== undefined ? { description: o.description } : {}),
+  };
+}
+
+// Path-level parameters apply to every operation; an operation parameter with the same
+// name + in overrides it (Swagger 2.0 / OAS #pathItemParameters).
+function effectiveParameters(spec: OpenApiSpec, path: string, op: Operation): Parameter[] {
+  const merged = new Map<string, Parameter>();
+  const pathLevel = (spec.paths?.[path]?.parameters as Parameter[] | undefined) || [];
+  for (const raw of [...pathLevel, ...(op.parameters || [])]) {
+    const p = deref(spec, raw);
+    merged.set(`${p.in}:${p.name}`, p);
+  }
+  return [...merged.values()];
+}
+
+// Swagger 2 has no requestBody: `in: body` is the body; `in: formData` params form one
+// (multipart if consumes says so or a param is a file, else urlencoded).
+function swagger2RequestBody(spec: OpenApiSpec, op: Operation, params: Parameter[]): EndpointDetail["requestBody"] {
+  const consumes = op.consumes || spec.consumes || [];
+  const body = params.find((p) => p.in === "body");
+  if (body) {
+    return { contentType: consumes[0] || "application/json", schema: shortType(body.schema), required: !!body.required };
+  }
+  const form = params.filter((p) => p.in === "formData");
+  if (!form.length) return null;
+  const multipart = consumes.includes("multipart/form-data") || form.some((p) => p.type === "file");
+  const properties: Record<string, Schema> = {};
+  for (const p of form) properties[p.name || ""] = { type: p.type, format: p.format, items: p.items, enum: p.enum };
+  return {
+    contentType: multipart ? "multipart/form-data" : "application/x-www-form-urlencoded",
+    schema: shortType({ type: "object", properties }),
+    required: form.some((p) => p.required),
+  };
+}
+
+// Response schema: OpenAPI 3 `content[mime].schema` (first media type), Swagger 2 `schema`.
+function responseSchema(r: ResponseObject): Schema | undefined {
+  if (r.schema) return r.schema;
+  const content = r.content || {};
+  const mime = Object.keys(content)[0];
+  return mime ? content[mime]?.schema : undefined;
+}
+
+// Schema of the first 2xx response (used for the generated response type).
+function successResponseSchema(spec: OpenApiSpec, op: Operation | undefined): Schema | undefined {
+  const ok = Object.entries(op?.responses || {}).find(([code]) => code.startsWith("2"));
+  return ok ? responseSchema(deref(spec, ok[1] as ResponseObject)) : undefined;
+}
+
 export function endpointDetail(spec: OpenApiSpec, path: string, method: string): EndpointDetail | null {
   const op = spec.paths?.[path]?.[method.toLowerCase()] as Operation | undefined;
   if (!op) return null;
-  const parameters = (op.parameters || []).map((p: Parameter) => {
-    const ref = (p.$ref ? (resolveRef(spec, p.$ref) as Parameter) : p) || p;
-    return {
-      name: ref.name || "",
-      in: ref.in || "",
-      required: !!ref.required,
-      type: shortType(ref.schema || (ref as Schema)),
-      description: ref.description || "",
-    };
-  });
+  const all = effectiveParameters(spec, path, op);
+  const parameters = all
+    .filter((p) => p.in !== "body" && p.in !== "formData")
+    .map((p) => ({
+      name: p.name || "",
+      in: p.in || "",
+      required: !!p.required,
+      type: shortType(p.schema || (p as Schema)),
+      description: p.description || "",
+    }));
   let requestBody: EndpointDetail["requestBody"] = null;
   if (op.requestBody) {
-    const content = op.requestBody.content || {};
+    const rb = deref(spec, op.requestBody as typeof op.requestBody & { $ref?: string });
+    const content = rb.content || {};
     const mime = Object.keys(content)[0];
     requestBody = {
       contentType: mime,
       schema: shortType(content[mime]?.schema),
-      required: !!op.requestBody.required,
+      required: !!rb.required,
     };
+  } else if (spec.swagger) {
+    requestBody = swagger2RequestBody(spec, op, all);
   }
   const responses = Object.entries(op.responses || {}).map(([code, r]) => {
-    const ref = ((r as ResponseObject).$ref
-      ? (resolveRef(spec, (r as ResponseObject).$ref!) as ResponseObject)
-      : r) as ResponseObject;
-    const content = ref.content || {};
-    const mime = Object.keys(content)[0];
+    const resp = deref(spec, r as ResponseObject);
+    const schema = responseSchema(resp);
     return {
       status: code,
-      description: ref.description || "",
-      schema: mime ? shortType(content[mime]?.schema) : "",
+      description: resp.description || "",
+      schema: schema ? shortType(schema) : "",
     };
   });
   return {
@@ -199,15 +260,7 @@ export function genTsForEndpoint(spec: OpenApiSpec, detail: EndpointDetail): str
   let out = `// ${detail.method} ${detail.path}${detail.summary ? `  —  ${detail.summary}` : ""}\n`;
 
   const op = spec.paths?.[detail.path]?.[detail.method.toLowerCase()] as Operation | undefined;
-  const okEntry = Object.entries(op?.responses || {}).find(([code]) => code.startsWith("2"));
-  const okRef = okEntry
-    ? (okEntry[1] as ResponseObject).$ref
-      ? (resolveRef(spec, (okEntry[1] as ResponseObject).$ref!) as ResponseObject)
-      : (okEntry[1] as ResponseObject)
-    : null;
-  const content = okRef?.content || {};
-  const mime = Object.keys(content)[0];
-  const schema = mime ? content[mime].schema : null;
+  const schema = successResponseSchema(spec, op);
 
   if (!schema) {
     out += `type Response = void;`;
@@ -245,15 +298,7 @@ function fnName(spec: OpenApiSpec, detail: EndpointDetail): string {
 
 function responseModelsAndType(spec: OpenApiSpec, detail: EndpointDetail): { models: string; type: string } {
   const op = spec.paths?.[detail.path]?.[detail.method.toLowerCase()] as Operation | undefined;
-  const okEntry = Object.entries(op?.responses || {}).find(([code]) => code.startsWith("2"));
-  const okRef = okEntry
-    ? (okEntry[1] as ResponseObject).$ref
-      ? (resolveRef(spec, (okEntry[1] as ResponseObject).$ref!) as ResponseObject)
-      : (okEntry[1] as ResponseObject)
-    : null;
-  const content = okRef?.content || {};
-  const mime = Object.keys(content)[0];
-  const schema = mime ? content[mime].schema : null;
+  const schema = successResponseSchema(spec, op);
   if (!schema) return { models: "", type: "void" };
   const seen = new Set<string>();
   const deps = new Set<string>();
@@ -290,7 +335,7 @@ function tsParamType(t: string): string {
 }
 
 export function genFetchClient(spec: OpenApiSpec, detail: EndpointDetail, baseUrl: string): string {
-  const origin = safeOrigin(spec, baseUrl);
+  const origin = resolveBaseUrl(spec, baseUrl);
   const name = fnName(spec, detail);
   const { models, type } = responseModelsAndType(spec, detail);
   const { sig, pathExpr, hasQuery, hasBody } = clientParts(detail);
@@ -312,7 +357,7 @@ ${init.join(",\n")},
 }
 
 export function genAxiosClient(spec: OpenApiSpec, detail: EndpointDetail, baseUrl: string): string {
-  const origin = safeOrigin(spec, baseUrl);
+  const origin = resolveBaseUrl(spec, baseUrl);
   const name = fnName(spec, detail);
   const { models, type } = responseModelsAndType(spec, detail);
   const { sig, pathExpr, hasQuery, hasBody } = clientParts(detail);
@@ -330,14 +375,6 @@ export async function ${name}(${sig}): Promise<${type}> {
   const res = await axios.${method}<${type}>(${args.join(", ")});
   return res.data;
 }`;
-}
-
-function safeOrigin(spec: OpenApiSpec, baseUrl: string): string {
-  try {
-    return new URL(baseUrl).origin + (spec.basePath || "");
-  } catch {
-    return baseUrl;
-  }
 }
 
 // ---- Request body example (JSON) generation ----
@@ -391,13 +428,7 @@ export function exampleRequestBody(spec: OpenApiSpec, detail: EndpointDetail): s
 
 // ---- cURL generation ----
 export function genCurl(spec: OpenApiSpec, detail: EndpointDetail, baseUrl: string): string {
-  const origin = (() => {
-    try {
-      return new URL(baseUrl).origin + (spec.basePath || "");
-    } catch {
-      return baseUrl;
-    }
-  })();
+  const origin = resolveBaseUrl(spec, baseUrl);
   let path = detail.path;
   const query: string[] = [];
   for (const p of detail.parameters) {

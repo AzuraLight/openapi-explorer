@@ -1,5 +1,8 @@
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Swagger-style API mark: ring + center node. Reads clearly at 16px. -->
-  <circle cx="12" cy="12" r="8.2" stroke="currentColor" stroke-width="2"/>
-  <circle cx="12" cy="12" r="2.3" fill="currentColor"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- Activity bar icon (monochrome; VS Code recolors it): { ⚡ } -->
+  <g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 4.5C4.6 4.5 4.6 5.4 4.6 6.9v2.6c0 1.1-.6 1.9-1.6 2.5 1 .6 1.6 1.4 1.6 2.5v2.6c0 1.5 0 2.4 1.4 2.4"/>
+    <path d="M18 4.5c1.4 0 1.4.9 1.4 2.4v2.6c0 1.1.6 1.9 1.6 2.5-1 .6-1.6 1.4-1.6 2.5v2.6c0 1.5 0 2.4-1.4 2.4"/>
+  </g>
+  <path d="M13.2 5.8 9.3 12.9h2.7l-1.2 5.3 3.9-7.2h-2.7z" fill="currentColor" stroke="currentColor" stroke-width=".6" stroke-linejoin="round"/>
 </svg>

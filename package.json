@@ -3,7 +3,7 @@
   "displayName": "%displayName%",
   "description": "%description%",
   "l10n": "./l10n",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "publisher": "AzuraLight",
   "author": "AzuraLight <azuralight09@gmail.com>",
   "license": "MIT",
@@ -68,16 +68,18 @@
       }
     ],
     "commands": [
-      { "command": "swaggerViewer.setUrl", "title": "%cmd.setUrl%", "category": "OpenAPI", "icon": "$(link)" },
+      { "command": "swaggerViewer.addApi", "title": "%cmd.addApi%", "category": "OpenAPI", "icon": "$(add)" },
+      { "command": "swaggerViewer.apiSettings", "title": "%cmd.apiSettings%", "category": "OpenAPI", "icon": "$(gear)" },
+      { "command": "swaggerViewer.openApiSettings", "title": "%cmd.apiSettings%", "category": "OpenAPI" },
+      { "command": "swaggerViewer.renameApi", "title": "%cmd.renameApi%", "category": "OpenAPI" },
+      { "command": "swaggerViewer.copyApiUrl", "title": "%cmd.copyApiUrl%", "category": "OpenAPI" },
+      { "command": "swaggerViewer.removeApi", "title": "%cmd.removeApi%", "category": "OpenAPI" },
       { "command": "swaggerViewer.refresh", "title": "%cmd.refresh%", "category": "OpenAPI", "icon": "$(refresh)" },
       { "command": "swaggerViewer.openInBrowser", "title": "%cmd.openInBrowser%", "category": "OpenAPI", "icon": "$(globe)" },
       { "command": "swaggerViewer.setToken", "title": "%cmd.setToken%", "category": "OpenAPI", "icon": "$(key)" },
-      { "command": "swaggerViewer.clearToken", "title": "%cmd.clearToken%", "category": "OpenAPI" },
       { "command": "swaggerViewer.setBasicAuth", "title": "%cmd.setBasicAuth%", "category": "OpenAPI", "icon": "$(account)" },
-      { "command": "swaggerViewer.clearBasicAuth", "title": "%cmd.clearBasicAuth%", "category": "OpenAPI" },
       { "command": "swaggerViewer.openSwaggerUI", "title": "%cmd.openSwaggerUI%", "category": "OpenAPI", "icon": "$(book)" },
       { "command": "swaggerViewer.search", "title": "%cmd.search%", "category": "OpenAPI", "icon": "$(search)" },
-      { "command": "swaggerViewer.addSpec", "title": "%cmd.addSpec%", "category": "OpenAPI" },
       { "command": "swaggerViewer.openOperation", "title": "%cmd.openOperation%", "category": "OpenAPI" },
       { "command": "swaggerViewer.copyTs", "title": "%cmd.copyTs%", "category": "OpenAPI" },
       { "command": "swaggerViewer.copyFetch", "title": "%cmd.copyFetch%", "category": "OpenAPI" },
@@ -89,28 +91,34 @@
         "command": "swaggerViewer.search",
         "key": "ctrl+alt+/",
         "mac": "cmd+alt+/"
+      },
+      { "command": "swaggerViewer.renameApi", "key": "f2", "when": "focusedView == swaggerExplorer && !inputFocus" },
+      {
+        "command": "swaggerViewer.removeApi",
+        "key": "delete",
+        "mac": "cmd+backspace",
+        "when": "focusedView == swaggerExplorer && !inputFocus"
       }
     ],
     "menus": {
       "view/title": [
+        { "command": "swaggerViewer.addApi", "when": "view == swaggerExplorer", "group": "navigation@0" },
         { "command": "swaggerViewer.search", "when": "view == swaggerExplorer", "group": "navigation@1" },
         { "command": "swaggerViewer.openSwaggerUI", "when": "view == swaggerExplorer", "group": "navigation@2" },
         { "command": "swaggerViewer.refresh", "when": "view == swaggerExplorer", "group": "navigation@3" },
-        { "command": "swaggerViewer.setUrl", "when": "view == swaggerExplorer", "group": "1_config@1" },
-        { "command": "swaggerViewer.addSpec", "when": "view == swaggerExplorer", "group": "1_config@2" },
         { "command": "swaggerViewer.openInBrowser", "when": "view == swaggerExplorer", "group": "1_config@3" },
         { "command": "swaggerViewer.setToken", "when": "view == swaggerExplorer", "group": "2_auth@1" },
-        { "command": "swaggerViewer.clearToken", "when": "view == swaggerExplorer", "group": "2_auth@2" },
-        { "command": "swaggerViewer.setBasicAuth", "when": "view == swaggerExplorer", "group": "2_auth@3" },
-        { "command": "swaggerViewer.clearBasicAuth", "when": "view == swaggerExplorer", "group": "2_auth@4" }
+        { "command": "swaggerViewer.setBasicAuth", "when": "view == swaggerExplorer", "group": "2_auth@3" }
       ],
       "view/item/context": [
-        { "command": "swaggerViewer.openSwaggerUI", "when": "view == swaggerExplorer && viewItem =~ /^spec/", "group": "inline" },
-        { "command": "swaggerViewer.openInBrowser", "when": "view == swaggerExplorer && viewItem =~ /^spec/", "group": "1_open@1" },
-        { "command": "swaggerViewer.setToken", "when": "view == swaggerExplorer && viewItem =~ /^spec/", "group": "2_auth@1" },
-        { "command": "swaggerViewer.clearToken", "when": "view == swaggerExplorer && viewItem =~ /^spec.*:token/", "group": "2_auth@2" },
-        { "command": "swaggerViewer.setBasicAuth", "when": "view == swaggerExplorer && viewItem =~ /^spec/", "group": "2_auth@3" },
-        { "command": "swaggerViewer.clearBasicAuth", "when": "view == swaggerExplorer && viewItem =~ /^spec.*:basic/", "group": "2_auth@4" },
+        { "command": "swaggerViewer.openSwaggerUI", "when": "view == swaggerExplorer && viewItem =~ /^(spec|group)/", "group": "inline" },
+        { "command": "swaggerViewer.openInBrowser", "when": "view == swaggerExplorer && viewItem =~ /^(spec|group)/", "group": "1_open@1" },
+        { "command": "swaggerViewer.addApi", "when": "view == swaggerExplorer && viewItem =~ /^spec/", "group": "0_api@1" },
+        { "command": "swaggerViewer.apiSettings", "when": "view == swaggerExplorer && viewItem =~ /^spec/", "group": "3_manage@1" },
+        { "command": "swaggerViewer.copyApiUrl", "when": "view == swaggerExplorer && viewItem =~ /^spec/", "group": "3_manage@3" },
+        { "command": "swaggerViewer.apiSettings", "when": "view == swaggerExplorer && viewItem == pendingApi", "group": "3_manage@1" },
+        { "command": "swaggerViewer.removeApi", "when": "view == swaggerExplorer && viewItem == pendingApi", "group": "9_remove@1" },
+        { "command": "swaggerViewer.removeApi", "when": "view == swaggerExplorer && viewItem =~ /^spec/", "group": "9_remove@1" },
         { "command": "swaggerViewer.copyTs", "when": "view == swaggerExplorer && viewItem == endpoint", "group": "1_copy@1" },
         { "command": "swaggerViewer.copyFetch", "when": "view == swaggerExplorer && viewItem == endpoint", "group": "1_copy@2" },
         { "command": "swaggerViewer.copyAxios", "when": "view == swaggerExplorer && viewItem == endpoint", "group": "1_copy@3" },
@@ -119,6 +127,10 @@
       ],
       "commandPalette": [
         { "command": "swaggerViewer.openOperation", "when": "false" },
+        { "command": "swaggerViewer.renameApi", "when": "false" },
+        { "command": "swaggerViewer.openApiSettings", "when": "false" },
+        { "command": "swaggerViewer.copyApiUrl", "when": "false" },
+        { "command": "swaggerViewer.removeApi", "when": "false" },
         { "command": "swaggerViewer.copyTs", "when": "false" },
         { "command": "swaggerViewer.copyFetch", "when": "false" },
         { "command": "swaggerViewer.copyAxios", "when": "false" },
@@ -185,9 +197,13 @@
     "test:unit": "node --import tsx --test src/*.test.ts",
     "test:integration": "NODE_PATH=test/fake-vscode node --import tsx --test test/integration/*.test.ts",
     "test:webview": "NODE_PATH=test/fake-vscode playwright test",
+    "sample:gateway": "node --import tsx test/fixtures/sample-gateway.ts",
     "copy-assets": "node scripts/copy-swagger-ui.mjs",
     "prepare": "node scripts/copy-swagger-ui.mjs",
     "package": "vsce package --no-dependencies -o openapi-explorer-$npm_package_version.vsix"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

@@ -7,7 +7,11 @@ export const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
 // The fake vscode module's recorder (test/fake-vscode/vscode/index.js).
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-export const fakeVscode = require("vscode") as { __rec: any; __reset: () => void };
+export const fakeVscode = require("vscode") as {
+  __rec: any;
+  __reset: () => void;
+  __resolveView: (id: string) => Promise<any>;
+};
 
 export interface FakeContext {
   context: any;

@@ -10,3 +10,6 @@ media/swagger-ui/
 # Playwright output
 test-results/
 playwright-report/
+
+# README recording intermediates (test/e2e/readme-images.ts)
+out-demo/

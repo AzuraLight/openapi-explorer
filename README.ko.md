@@ -7,7 +7,17 @@
 라이브 Swagger/OpenAPI 스펙을 사이드바 트리 + 내장 Swagger UI로 보여주는 VS Code / Cursor
 익스텐션. 더 이상 크롬으로 Swagger UI 페이지를 열 필요가 없습니다.
 
-![OpenAPI Explorer](media/icon.png)
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/overview-light.png">
+  <img src="docs/images/overview-dark.png" alt="OpenAPI Explorer: 사이드바 트리에 게이트웨이의 springdoc 그룹·태그·엔드포인트가 보이고, 고른 GET 엔드포인트가 옆의 내장 Swagger UI에 Try it out 상태로 열려 있다">
+</picture>
+
+![트리에서 엔드포인트를 누르면 Swagger UI에서 열리고, Try it out이 확장을 거쳐 요청을 보내 JSON 응답을 보여 준다](docs/images/tour.gif)
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/add-api-light.png">
+  <img src="docs/images/add-api-dark.png" width="640" alt="API 추가: 트리의 새 API 노드와 편집 영역의 설정 탭. 스펙 주소와 Bearer 토큰을 입력한 모습">
+</picture>
 
 ## 기능
 
@@ -21,14 +31,22 @@
 - **엔드포인트 검색 팔레트** — 메서드/경로/요약 퍼지 검색 후 바로 점프(`Cmd/Ctrl+Alt+/`).
 - **코드 생성** — 트리 항목 우클릭으로 응답 타입(TS, 의존 모델·JSDoc·래퍼 응답 전개) /
   `fetch`·`axios` 호출 함수 / cURL 복사.
-- **다중 게이트웨이** — `swaggerViewer.specs`에 여러 스펙을 등록하고 서비스별 전환.
+- **다중 게이트웨이를 탐색기 폴더처럼 관리** — ＋ / 우클릭 **API 추가**, **이름 변경**, **주소 수정**, **API 제거**.
+  `swaggerViewer.specs`에 저장됩니다.
 - **UI URL 자동 변환** — `.../api-docs`(Swagger UI 페이지) 주소를 넣어도 실제 스펙
-  (`/api-docs-json`, `/v3/api-docs` 등)을 자동 탐색.
+  (`/api-docs-json`, `/v3/api-docs`, `-yaml` 등)을 자동 탐색. springdoc 그룹
+  (`/v3/api-docs/swagger-config`)은 그룹마다 노드로 표시.
+- **JSON·YAML, OpenAPI 3.x·Swagger 2.0** — path 단위 파라미터, Swagger 2의 `body`/`formData`
+  파라미터, 상대 경로 `servers` 포함.
 - **사내 환경 지원** — 프록시, 사설 CA 인증서, `strictSSL` 토글, 인증 토큰(SecretStorage)·커스텀 헤더.
 
 ## 사용법
 
-1. **OpenAPI: URL 설정** 으로 스펙 또는 문서 페이지 URL(`.../api-docs` 가능)을 입력합니다.
+1. OpenAPI 패널의 **＋ API 추가**(또는 API 우클릭 → **API 추가…**)를 누르면 트리에 **새 API** 노드가 생기고
+   오른쪽 편집 영역에 설정 탭이 열립니다. 스펙 또는 문서 페이지 URL(`.../api-docs` 가능), 이름(선택), 필요하면
+   Bearer 토큰이나 아이디·비밀번호를 넣고 **저장**합니다(먼저 **연결 확인**도 가능). 이름은 비워 두면 스펙 제목을 쓰고,
+   저장하지 않고 탭을 닫으면 새 API 노드는 사라집니다. API를 우클릭하면 **API 설정…**(`F2`), **주소 복사**,
+   **API 제거**(`Delete` / `⌘⌫`)가 있습니다.
 2. 트리를 탐색하거나 **OpenAPI: 엔드포인트 검색**(`Cmd/Ctrl+Alt+/`)을 사용합니다.
 3. 엔드포인트를 클릭해 Swagger UI에서 열고, 우클릭으로 코드를 생성합니다.
 
