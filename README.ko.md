@@ -7,7 +7,17 @@
 라이브 Swagger/OpenAPI 스펙을 사이드바 트리 + 내장 Swagger UI로 보여주는 VS Code / Cursor
 익스텐션. 더 이상 크롬으로 Swagger UI 페이지를 열 필요가 없습니다.
 
-![OpenAPI Explorer](media/icon.png)
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/overview-light.png">
+  <img src="docs/images/overview-dark.png" alt="OpenAPI Explorer: 사이드바 트리에 게이트웨이의 springdoc 그룹·태그·엔드포인트가 보이고, 고른 GET 엔드포인트가 옆의 내장 Swagger UI에 Try it out 상태로 열려 있다">
+</picture>
+
+![트리에서 엔드포인트를 누르면 Swagger UI에서 열리고, Try it out이 확장을 거쳐 요청을 보내 JSON 응답을 보여 준다](docs/images/tour.gif)
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/add-api-light.png">
+  <img src="docs/images/add-api-dark.png" width="640" alt="API 추가: 트리 위 인라인 입력칸에 스펙 주소를 입력한 모습. Enter로 확인, Esc로 취소">
+</picture>
 
 ## 기능
 

@@ -24,6 +24,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **New icon:** `{ ⚡ }` — braces for the API document and a bolt for calling it from the editor, on Swagger UI's
+  method green. The activity bar uses a matching monochrome version.
+- README screenshots and a GIF tour, recorded from the real VS Code (`test/e2e/readme-images.ts`).
 - **Set URL** and **Add Spec** are replaced by **Add API**. An existing `swaggerViewer.url` keeps working and is
   now listed next to `swaggerViewer.specs` (it used to be hidden as soon as `specs` had an entry); it is
   never rewritten automatically — renaming or editing it moves it into `specs`.

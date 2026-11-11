@@ -25,14 +25,25 @@ export interface VSCodeSession {
   showOpenApiView(): Promise<void>;
 }
 
-export async function launchVSCode(workspaceSettings: Record<string, unknown>): Promise<VSCodeSession> {
+export interface LaunchOptions {
+  userSettings?: Record<string, unknown>; // merged over the defaults below
+  windowSize?: [number, number]; // CSS pixels; screenshots are at the display's scale (2x on Retina)
+}
+
+export async function launchVSCode(
+  workspaceSettings: Record<string, unknown>,
+  options: LaunchOptions = {}
+): Promise<VSCodeSession> {
   const ws = path.join(E2E_ROOT, "ws");
   fs.mkdirSync(path.join(ws, ".vscode"), { recursive: true });
   fs.writeFileSync(path.join(ws, ".vscode", "settings.json"), JSON.stringify(workspaceSettings));
   // Custom (in-DOM) menus so context menus can be read and screenshotted; macOS uses native ones by default.
   const userDir = path.join(E2E_ROOT, "ud", "User");
   fs.mkdirSync(userDir, { recursive: true });
-  fs.writeFileSync(path.join(userDir, "settings.json"), JSON.stringify({ "window.menuStyle": "custom" }));
+  fs.writeFileSync(
+    path.join(userDir, "settings.json"),
+    JSON.stringify({ "window.menuStyle": "custom", ...options.userSettings })
+  );
   // Launched from inside VS Code, ELECTRON_RUN_AS_NODE would make Code start as plain Node.
   const env = Object.fromEntries(
     Object.entries(process.env).filter(([k]) => k !== "ELECTRON_RUN_AS_NODE" && !k.startsWith("VSCODE_"))
@@ -77,6 +88,19 @@ export async function launchVSCode(workspaceSettings: Record<string, unknown>): 
     proc.kill();
     throw new Error("workbench window not found");
   }
+  if (options.windowSize) {
+    // Electron's debugging port has no window-bounds commands; emulate the viewport instead
+    // (the workbench lays itself out to it, and screenshots are taken at that size).
+    const [width, height] = options.windowSize;
+    const cdp = await win.context().newCDPSession(win);
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width,
+      height,
+      deviceScaleFactor: 2,
+      mobile: false,
+    });
+    await win.evaluate(() => window.dispatchEvent(new Event("resize")));
+  }
   await sleep(4000);
   const w = win;
   const row = (label: string) =>
@@ -88,17 +112,16 @@ export async function launchVSCode(workspaceSettings: Record<string, unknown>): 
     win: w,
     row,
     async showOpenApiView() {
-      const icon = w.locator('.activitybar [aria-label^="OpenAPI"]').first();
-      await icon.click();
-      await sleep(1200);
-      if (
-        !(await w
-          .locator(".pane-header", { hasText: /API/ })
+      // The side bar shows our container when its title is "OpenAPI…"; clicking the activity icon of
+      // the container already shown would collapse the side bar, so only click when needed.
+      const shown = () =>
+        w
+          .locator(".part.sidebar .composite.title", { hasText: /OpenAPI/ })
           .first()
           .isVisible()
-          .catch(() => false))
-      ) {
-        await icon.click();
+          .catch(() => false);
+      for (let i = 0; i < 3 && !(await shown()); i++) {
+        await w.locator('.activitybar [aria-label^="OpenAPI"]').first().click();
         await sleep(1200);
       }
     },

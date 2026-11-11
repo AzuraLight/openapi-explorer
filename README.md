@@ -7,7 +7,17 @@
 A VS Code / Cursor extension that turns a live Swagger/OpenAPI spec into a sidebar
 tree plus an embedded Swagger UI — no more opening the docs page in Chrome.
 
-![OpenAPI Explorer](media/icon.png)
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/overview-light.png">
+  <img src="docs/images/overview-dark.png" alt="OpenAPI Explorer: a gateway's springdoc groups, tags and endpoints in the sidebar tree, and the selected GET endpoint opened in the embedded Swagger UI beside it with Try it out filled in">
+</picture>
+
+![Clicking an endpoint in the tree opens it in Swagger UI, then Try it out sends the request through the extension and shows the JSON response](docs/images/tour.gif)
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/add-api-light.png">
+  <img src="docs/images/add-api-dark.png" width="640" alt="Adding an API: the inline input above the tree with a spec URL typed in, Enter to confirm and Esc to cancel">
+</picture>
 
 ## Features
 
