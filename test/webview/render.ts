@@ -12,6 +12,7 @@ export interface Rendered {
   file: string;
   panel: any;
   sent: any[]; // messages the webview posted to the extension
+  state?: unknown; // the webview's vscode.setState value (fed back by getState on the next load)
 }
 
 export function renderWebview(
@@ -39,12 +40,21 @@ export async function openInPage(page: Page, r: Rendered): Promise<void> {
     for (let i = 0; i < 100 && rec.posts.length === before; i++) await new Promise((z) => setTimeout(z, 20));
     return rec.posts[rec.posts.length - 1];
   });
-  await page.addInitScript(() => {
+  // getState/setState: VS Code keeps the state while the panel is hidden and hands it back on reload.
+  await page.exposeFunction("__setState", (s: unknown) => void (r.state = s));
+  await page.addInitScript((saved) => {
+    let state = saved;
     (window as any).acquireVsCodeApi = () => ({
       postMessage: (m: unknown) =>
         (window as any).__toExtension(m).then((reply: unknown) => reply && window.postMessage(reply, "*")),
+      getState: () => state,
+      setState: (s: unknown) => {
+        state = s;
+        (window as any).__setState(s);
+      },
     });
-  });
+  }, r.state ?? null);
   await page.goto("file://" + r.file);
-  await page.waitForSelector(".opblock", { timeout: 15_000 });
+  // Swagger UI starts with every tag collapsed: wait for the tag list.
+  await page.waitForSelector(".opblock-tag", { timeout: 15_000 });
 }

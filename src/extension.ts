@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { resolveSpec, getSchemas, clearCache, type ResolveResult } from "./specLoader";
+import type { Fetcher, OpenApiSpec, Operation } from "./types";
 import {
   groupByTag,
   listEndpoints,
@@ -11,7 +12,7 @@ import {
   genAxiosClient,
 } from "./model";
 import { openSwaggerUi, type FocusTarget } from "./swaggerUi";
-import { createHttpFetcher, type HttpOptions } from "./http";
+import { createHttpFetcher, clearHttpCaches, type HttpOptions } from "./http";
 import { ApiSettingsPanels, type AuthKind, type SettingsData, type SettingsInit } from "./apiSettingsPanel";
 
 // Credentials are stored per host (like npm/git/gh) so a credential is only ever sent to its own host.
@@ -248,10 +249,28 @@ async function ensureSpec(
   force = false
 ): Promise<ResolveResult> {
   if (!force && specCache.has(url)) return specCache.get(url)!;
-  const fetcher = createHttpFetcher(await buildHttpOptions(context, url));
-  const res = await resolveSpec(url, { force, fetcher });
+  const res = await resolveSpec(url, { force, fetcher: specFetcher(context, url) });
   specCache.set(url, res);
+  // springdoc groups: the primary group's spec is already here — its group node must not fetch it again.
+  if (res.groups && res.groups.length > 1 && !specCache.has(res.specUrl)) {
+    specCache.set(res.specUrl, { ...res, groups: undefined });
+  }
   return res;
+}
+
+// Spec fetcher for one API: every request carries the credential of its own host, so a docs page or
+// swagger-config that points at another host does not receive this host's token.
+// `override` (settings tab Test/Save) replaces the stored credential for the API's own host only.
+function specFetcher(
+  context: vscode.ExtensionContext,
+  apiUrl: string,
+  override?: { token?: string; basic?: BasicCredential }
+): Fetcher {
+  const apiHost = hostOf(apiUrl);
+  return async (u) => {
+    const own = override && hostOf(u) === apiHost ? override : undefined;
+    return createHttpFetcher(await buildHttpOptions(context, u, own))(u);
+  };
 }
 
 // ---------------- Tree ----------------
@@ -478,7 +497,7 @@ async function openOperation(context: vscode.ExtensionContext, node: Node): Prom
       : node._kind === "endpoint" && node._tag && node._path && node._method
         ? {
             kind: "operation",
-            tag: node._tag,
+            tag: swaggerUiTag(res.spec, node._path, node._method),
             operationId: node._operationId,
             method: node._method,
             path: node._path,
@@ -486,6 +505,13 @@ async function openOperation(context: vscode.ExtensionContext, node: Node): Prom
         : undefined;
   const httpOptions = await buildHttpOptions(context, res.specUrl);
   openSwaggerUi(context, res.spec, res.spec.info?.title || "Swagger UI", res.specUrl, httpOptions, focus);
+}
+
+// The section Swagger UI lists an operation under: its first tag, or "default" without tags
+// (the tree shows those under "Other").
+function swaggerUiTag(spec: OpenApiSpec, path: string, method: string): string {
+  const op = spec.paths?.[path]?.[method.toLowerCase()] as Operation | undefined;
+  return op?.tags?.[0] || "default";
 }
 
 // ---------------- Code generation (tree right-click) ----------------
@@ -506,26 +532,31 @@ async function copyForNode(
   let text = "";
   let label = "";
 
-  if (node._kind === "model" && node._name) {
-    text = genTsForModel(spec, node._name);
-    label = "TypeScript";
-  } else if (node._kind === "endpoint" && node._path && node._method) {
-    const detail = endpointDetail(spec, node._path, node._method);
-    if (!detail) return;
-    if (kind === "ts") {
-      text = genTsForEndpoint(spec, detail);
+  try {
+    if (node._kind === "model" && node._name) {
+      text = genTsForModel(spec, node._name);
       label = "TypeScript";
-    } else if (kind === "fetch") {
-      text = genFetchClient(spec, detail, res.specUrl);
-      label = "fetch";
-    } else if (kind === "axios") {
-      text = genAxiosClient(spec, detail, res.specUrl);
-      label = "axios";
+    } else if (node._kind === "endpoint" && node._path && node._method) {
+      const detail = endpointDetail(spec, node._path, node._method);
+      if (!detail) return;
+      if (kind === "ts") {
+        text = genTsForEndpoint(spec, detail);
+        label = "TypeScript";
+      } else if (kind === "fetch") {
+        text = genFetchClient(spec, detail, res.specUrl);
+        label = "fetch";
+      } else if (kind === "axios") {
+        text = genAxiosClient(spec, detail, res.specUrl);
+        label = "axios";
+      } else {
+        text = genCurl(spec, detail, res.specUrl);
+        label = "cURL";
+      }
     } else {
-      text = genCurl(spec, detail, res.specUrl);
-      label = "cURL";
+      return;
     }
-  } else {
+  } catch (e: any) {
+    vscode.window.showErrorMessage(vscode.l10n.t("Failed to generate code: {0}", e?.message ?? String(e)));
     return;
   }
   await vscode.env.clipboard.writeText(text);
@@ -552,11 +583,31 @@ async function pickSpecUrl(arg?: Node): Promise<string | undefined> {
 export function activate(context: vscode.ExtensionContext): void {
   const provider = new SwaggerTreeProvider(context);
   const treeView = vscode.window.createTreeView("swaggerExplorer", { treeDataProvider: provider });
+  // Everything (Refresh, connection settings changed): specs, HTTP agents and CA files.
   const resetCaches = () => {
     specCache.clear();
     clearCache();
+    clearHttpCaches();
     provider.refresh();
   };
+  // Only some APIs (one saved or removed, or credentials of one host changed): the others keep their
+  // loaded specs. A springdoc API also forgets its groups.
+  const forgetApis = (urls: string[]) => {
+    for (const url of urls) {
+      const r = specCache.get(url);
+      for (const g of r?.groups || []) {
+        specCache.delete(g.url);
+        clearCache(g.url);
+      }
+      specCache.delete(url);
+      clearCache(url);
+    }
+    provider.refresh();
+  };
+  const apisOnHost = (host: string) =>
+    specEntries()
+      .filter((e) => hostOf(e.url) === host)
+      .map((e) => e.url);
 
   // ---- credentials of a host ----
   type Creds = { token?: string; basic?: BasicCredential };
@@ -588,8 +639,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // test or a save in progress never changes what other requests and tabs see.
   async function scanWith(url: string, creds: Creds): Promise<{ res?: ResolveResult; error?: Error }> {
     try {
-      const options = await buildHttpOptions(context, url, creds);
-      return { res: await resolveSpec(url, { force: true, fetcher: createHttpFetcher(options) }) };
+      return { res: await resolveSpec(url, { force: true, fetcher: specFetcher(context, url, creds) }) };
     } catch (e: any) {
       return { error: e instanceof Error ? e : new Error(String(e)) };
     }
@@ -712,7 +762,17 @@ export function activate(context: vscode.ExtensionContext): void {
         await writeCreds(hostOf(original), {});
       }
       drafts.delete(init.key);
-      resetCaches();
+      // Only this API and those sharing its (old/new) host's credentials are reloaded; the spec just
+      // scanned with these settings is kept instead of being downloaded again.
+      forgetApis([
+        ...new Set([
+          ...(original ? [original] : []),
+          data.url,
+          ...apisOnHost(host),
+          ...(original ? apisOnHost(hostOf(original)) : []),
+        ]),
+      ]);
+      if (res) specCache.set(data.url, res);
       // The first API was just added: a legacy token now has exactly one host to move to.
       if (registeredHosts().length === 1) void migrateLegacyToken(context, resetCaches, async () => {});
       const node = (await provider.getChildren()).find((n) => n._specUrl === data.url && n._apiRoot);
@@ -723,7 +783,7 @@ export function activate(context: vscode.ExtensionContext): void {
     async useLegacy(init, post) {
       const host = hostOf(init.url);
       if (!(await assignLegacyToken(context, [host], true))) return undefined;
-      resetCaches();
+      forgetApis(apisOnHost(host));
       // Every other open tab stops offering it.
       settings.updateAll((i) => (i.key === init.key ? undefined : { legacyToken: false }));
       post({ type: "status", kind: "ok", text: vscode.l10n.t("The saved token is now used for {0}.", host) });
@@ -832,7 +892,7 @@ export function activate(context: vscode.ExtensionContext): void {
     settings.close(n._specUrl!, true);
     drafts.delete(n._specUrl!);
     await updateEntry(n._specUrl!, () => null);
-    resetCaches();
+    forgetApis([n._specUrl!]);
   }
 
   context.subscriptions.push(
@@ -943,7 +1003,16 @@ export function activate(context: vscode.ExtensionContext): void {
       apiSettings(arg, "auth", "basic")
     ),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration("swaggerViewer")) resetCaches();
+      if (!e.affectsConfiguration("swaggerViewer")) return;
+      // Connection settings apply to every API: reload all. Otherwise only the API list changed
+      // (add/rename/remove): forget the APIs that are gone and keep the rest.
+      const connection = ["headers", "strictSSL", "caCertPath", "proxy"].some((k) =>
+        e.affectsConfiguration(`swaggerViewer.${k}`)
+      );
+      if (connection) return resetCaches();
+      const live = new Set(specEntries().map((x) => x.url));
+      for (const u of live) for (const g of specCache.get(u)?.groups || []) live.add(g.url);
+      forgetApis([...specCache.keys()].filter((u) => !live.has(u)));
     })
   );
 
