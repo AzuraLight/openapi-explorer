@@ -1,8 +1,7 @@
 // Swagger/OpenAPI spec loader
-// Even given a UI page (HTML) URL, it auto-discovers the actual spec (JSON or YAML),
+// Even given a UI page (HTML) URL, it auto-discovers the actual spec (JSON),
 // including springdoc's grouped specs (swagger-config `urls`).
 // Takes an injected fetcher to decouple from vscode/network → unit testable.
-import { parse as parseYaml } from "yaml";
 import type { Fetcher, OpenApiSpec, Schema } from "./types";
 
 export interface SpecGroup {
@@ -14,33 +13,19 @@ const SPEC_CACHE = new Map<string, { spec: OpenApiSpec; fetchedAt: number }>();
 const URL_RESOLVE_CACHE = new Map<string, { specUrl: string; groups?: SpecGroup[] }>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-// yaml's own default; stated explicitly because it is our guard against alias-expansion
-// ("billion laughs") attacks — https://eemeli.org/yaml/#parse-options
-const YAML_MAX_ALIAS_COUNT = 100;
-
 const isPetstore = (u: string): boolean => /petstore\.swagger\.io/.test(u);
 const looksLikeSpec = (obj: any): boolean =>
   !!obj && typeof obj === "object" && !Array.isArray(obj) && !!(obj.openapi || obj.swagger || obj.paths);
 
-// JSON first; otherwise YAML (any content type — servers often send YAML as text/plain).
-// HTML is never parsed as YAML. A YAML alias-limit violation is rethrown, not treated as "not a spec".
+// JSON only (any content type).
 export function tryParse(body: string): OpenApiSpec | null {
   // trimStart also drops a UTF-8 BOM (U+FEFF), which JSON.parse would otherwise reject.
   const trimmed = body.trimStart();
-  if (!trimmed || trimmed.startsWith("<")) return null;
-  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-    try {
-      const obj = JSON.parse(trimmed);
-      return looksLikeSpec(obj) ? (obj as OpenApiSpec) : null;
-    } catch {
-      /* not JSON — may still be YAML flow style */
-    }
-  }
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
   try {
-    const obj = parseYaml(trimmed, { maxAliasCount: YAML_MAX_ALIAS_COUNT });
+    const obj = JSON.parse(trimmed);
     return looksLikeSpec(obj) ? (obj as OpenApiSpec) : null;
-  } catch (e: any) {
-    if (/alias/i.test(e?.message ?? "")) throw new Error(`Spec rejected: ${e.message}`);
+  } catch {
     return null;
   }
 }
@@ -56,25 +41,15 @@ export function candidateUrls(inputUrl: string): string[] {
   const path = u.pathname.replace(/\/$/, "");
   const origin = u.origin;
   if (path) {
-    // NestJS serves /{path}-json and /{path}-yaml — https://docs.nestjs.com/openapi/introduction
-    cands.push(
-      `${origin}${path}-json`,
-      `${origin}${path}.json`,
-      `${origin}${path}/swagger.json`,
-      `${origin}${path}-yaml`,
-      `${origin}${path}.yaml`
-    );
+    // NestJS serves /{path}-json — https://docs.nestjs.com/openapi/introduction
+    cands.push(`${origin}${path}-json`, `${origin}${path}.json`, `${origin}${path}/swagger.json`);
   }
   cands.push(
     `${origin}/v3/api-docs`,
     `${origin}/v2/api-docs`,
     `${origin}/swagger.json`,
     `${origin}/openapi.json`,
-    `${origin}/api-docs-json`,
-    // springdoc also serves YAML at /v3/api-docs.yaml — https://springdoc.org/
-    `${origin}/v3/api-docs.yaml`,
-    `${origin}/openapi.yaml`,
-    `${origin}/swagger.yaml`
+    `${origin}/api-docs-json`
   );
   return [...new Set(cands)].filter((c) => !isPetstore(c));
 }

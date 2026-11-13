@@ -36,9 +36,9 @@ tree plus an embedded Swagger UI — no more opening the docs page in Chrome.
 - **Multiple gateways, managed like Explorer folders** — ＋ / right-click **Add API**, **Rename**, **Edit URL**,
   **Remove API**; stored in `swaggerViewer.specs`.
 - **UI URL auto-discovery** — paste a `.../api-docs` (Swagger UI page) URL and the real spec
-  (`/api-docs-json`, `/v3/api-docs`, `-yaml`, …) is discovered automatically. springdoc groups
+  (`/api-docs-json`, `/v3/api-docs`, …) is discovered automatically. springdoc groups
   (`/v3/api-docs/swagger-config`) appear as one node per group.
-- **JSON and YAML, OpenAPI 3.x and Swagger 2.0** — including path-level parameters, Swagger 2
+- **JSON, OpenAPI 3.x and Swagger 2.0** — including path-level parameters, Swagger 2
   `body`/`formData` parameters, and relative `servers` URLs.
 - **Corporate environments** — proxy, private CA certificate, `strictSSL` toggle, and an
   auth token stored in SecretStorage plus custom headers.

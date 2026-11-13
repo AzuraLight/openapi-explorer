@@ -34,9 +34,9 @@
 - **다중 게이트웨이를 탐색기 폴더처럼 관리** — ＋ / 우클릭 **API 추가**, **이름 변경**, **주소 수정**, **API 제거**.
   `swaggerViewer.specs`에 저장됩니다.
 - **UI URL 자동 변환** — `.../api-docs`(Swagger UI 페이지) 주소를 넣어도 실제 스펙
-  (`/api-docs-json`, `/v3/api-docs`, `-yaml` 등)을 자동 탐색. springdoc 그룹
+  (`/api-docs-json`, `/v3/api-docs` 등)을 자동 탐색. springdoc 그룹
   (`/v3/api-docs/swagger-config`)은 그룹마다 노드로 표시.
-- **JSON·YAML, OpenAPI 3.x·Swagger 2.0** — path 단위 파라미터, Swagger 2의 `body`/`formData`
+- **JSON, OpenAPI 3.x·Swagger 2.0** — path 단위 파라미터, Swagger 2의 `body`/`formData`
   파라미터, 상대 경로 `servers` 포함.
 - **사내 환경 지원** — 프록시, 사설 CA 인증서, `strictSSL` 토글, 인증 토큰(SecretStorage)·커스텀 헤더.
 
