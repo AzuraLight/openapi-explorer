@@ -56,9 +56,9 @@
 
 ### 1.2.0 — 스펙 읽기
 
-**상태:** 2026-11-10 `develop`에 구현, 아직 배포 전. 번들 46KB → 169KB, VSIX 557KB → 594KB(`yaml` 파서 때문).
+**상태:** 2026-11-11 배포 — GitHub 릴리스 `v1.2.0`, Open VSX. 1.2.0에 함께 들어감: API를 탐색기 폴더처럼 관리하고 편집 영역의 API 설정 탭에서 등록, 엣지케이스·독립 리뷰 수정.
 
-1.2.0에 함께 들어감: API를 탐색기 폴더처럼 관리 — ＋ / 우클릭 **API 추가…**, **이름 변경**(`F2`), **주소 수정…**, **주소 복사**, **API 제거**(`Delete`/`⌘⌫`). 실제 VS Code에서 확인(`test/e2e/vscode-ui.ts`).
+배포된 API 관리 방식: ＋ / 우클릭 **API 추가…**로 새 API 노드와 설정 탭(주소·이름·Bearer 토큰 또는 아이디·비밀번호·연결 확인·저장)이 열리고, 우클릭 **API 설정…**(`F2`), **주소 복사**, **API 제거**(`Delete`/`⌘⌫`). 실제 VS Code에서 확인(`test/e2e/vscode-ui.ts`).
 
 - E1 YAML 파싱 — springdoc `/v3/api-docs.yaml`, NestJS `-yaml` 경로 포함
 - E4 path 단위 파라미터 병합 — name과 in이 같으면 operation 쪽으로 덮어씀 (Swagger 2.0 `#pathItemParameters`)
@@ -69,12 +69,15 @@
 
 완료 기준: E1~E4, E12~E14 시험 통과.
 
-### 다음 — 로컬 스펙 파일 ("보류"에서 앞당김)
+### 1.3.0 — 로컬 스펙 파일, 외부 `$ref`
 
-- `file://` 스펙을 읽고, 파일이 바뀌면 다시 불러온다.
+- `file://` 스펙(JSON / YAML)을 읽고, 파일이 바뀌면 다시 불러온다.
 - 탐색기에서 스펙 파일 우클릭 → **OpenAPI Explorer에 추가** (`explorer/context`, `resourceFilename =~ /(openapi|swagger|api-docs)/`로 거름 — https://code.visualstudio.com/api/references/when-clause-contexts).
+- 외부 `$ref`(여러 파일·URL로 나눈 스펙)를 로컬·원격 모두 지원. 직접 만들지 라이브러리를 쓸지는 시작 전에 조사로 정한다.
 
-### 1.3.0 — 코드 생성
+완료 기준: 여러 파일로 나눈 스펙이 탐색기와 URL 양쪽에서 열리고, 어느 파일을 고쳐도 반영된다.
+
+### 1.4.0 — 코드 생성
 
 기준 도구는 openapi-typescript 7.13.0의 실제 출력이다.
 
@@ -86,15 +89,22 @@
 
 완료 기준: E5~E11 시험 통과, 생성된 코드가 `tsc --noEmit` 통과.
 
-### 1.4.0 — UX
+### 1.5.0 — UX
 
-- R5 다크 테마 — `vscode-dark` 클래스 기준 (https://code.visualstudio.com/api/extension-guides/webview)
+- R5 Swagger UI 다크 테마 — `vscode-dark` 클래스 기준 (https://code.visualstudio.com/api/extension-guides/webview)
 - `withProgress({ viewId })`로 로딩 표시
 - 불러오기 실패 노드에 다시 시도
 
+### 수시 — 배포 자동화
+
+- 태그 푸시 → 빌드·시험·GitHub 릴리스·Open VSX 배포 (깃라인 방식)
+- `actions/setup-node` 갱신 (러너의 Node 20 지원 종료 경고)
+- Playwright를 올리면 `ubuntu-24.04` 러너 고정이 필요 없어지는지 확인
+- README 이미지는 영어 샘플 게이트웨이로 촬영
+
 ### 보류
 
-외부 `$ref`, 로컬 파일, apiKey·OAuth2·mutualTLS 인증 UI.
+apiKey·OAuth2·mutualTLS 인증 UI, springdoc 사용자 지정 `configUrl`(`swagger-initializer.js`에서 지정), VS Code Marketplace 배포.
 
 ## 시험 체계
 
@@ -118,6 +128,10 @@
 | 2026-11-11 | API를 탐색기 루트 폴더처럼 관리: 제목줄 ＋, 노드 우클릭 추가·이름 변경·주소 수정·주소 복사·제거, F2/Delete        | 탐색기는 루트 폴더 우클릭으로 폴더를 추가·제거한다 (https://code.visualstudio.com/docs/editing/workspaces/multi-root-workspaces). 확장은 트리 빈 공간에 메뉴를 붙일 수 없다: `view/title`, `view/item/context`만 있음 (VS Code `menusExtensionPoint.ts`) |
 | 2026-11-11 | `swaggerViewer.url`은 옮기지 않고 그대로 `specs`와 함께 표시                                                      | 옮기면 각 프로젝트의 `.vscode/settings.json`(팀과 공유될 수 있음)을 확장이 고치게 됨                                                                                                                                                                     |
 | 2026-11-11 | "메서드를 열면 최하단으로 감"은 재현 불가로 종료                                                                  | 실제 VS Code에서 Petstore 3·샘플 게이트웨이로 재현 안 됨 (`test/e2e/vscode-scroll.ts`), 사용자 확인                                                                                                                                                      |
+| 2026-11-13 | 1.2.0 이후 순서: 로컬 파일 + 외부 `$ref`(1.3.0) → 코드 생성(1.4.0) → UX(1.5.0)                                    | 사용자 결정                                                                                                                                                                                                                                              |
+| 2026-11-13 | 외부 `$ref`를 1.3.0 범위에 포함                                                                                   | 사용자 결정. 로컬 파일을 지원하면 나눈 스펙이 흔함                                                                                                                                                                                                       |
+| 2026-11-13 | VS Code Marketplace 배포는 나중에, 지금은 Open VSX만                                                              | 사용자 결정                                                                                                                                                                                                                                              |
+| 2026-11-13 | README 이미지는 영어 샘플 게이트웨이로 촬영                                                                       | 사용자 결정. README는 영어로 먼저 읽힘                                                                                                                                                                                                                   |
 
 ## 출처
 

@@ -56,9 +56,9 @@ Done when: all of the reproduction tests above pass.
 
 ### 1.2.0 — Spec reading
 
-**Status:** implemented on `develop` 2026-11-10, not yet released. Bundle 46 KB → 169 KB, VSIX 557 KB → 594 KB (the `yaml` parser).
+**Status:** released 2026-11-11 — GitHub release `v1.2.0`, Open VSX. Also in 1.2.0: APIs managed like Explorer folders with an API settings tab in the editor, and the edge-case / independent-review fixes.
 
-Also in 1.2.0: APIs are managed like Explorer folders — ＋ / right-click **Add API…**, **Rename** (`F2`), **Edit URL…**, **Copy URL**, **Remove API** (`Delete`/`⌘⌫`). Checked in a real VS Code (`test/e2e/vscode-ui.ts`).
+API management as shipped: ＋ / right-click **Add API…** adds a New API node and opens its settings tab (URL, name, Bearer token or username & password, Test Connection, Save); right-click **API Settings…** (`F2`), **Copy URL**, **Remove API** (`Delete`/`⌘⌫`). Checked in a real VS Code (`test/e2e/vscode-ui.ts`).
 
 - E1: YAML parsing, including springdoc `/v3/api-docs.yaml` and NestJS `-yaml` paths.
 - E4: merge path-level parameters. When name and `in` match, the operation's definition wins (Swagger 2.0 `#pathItemParameters`).
@@ -69,12 +69,15 @@ Also in 1.2.0: APIs are managed like Explorer folders — ＋ / right-click **Ad
 
 Done when: E1–E4 and E12–E14 tests pass.
 
-### Next — Local spec files (pulled forward from "On hold")
+### 1.3.0 — Local spec files and external `$ref`
 
-- Read `file://` specs and reload them when the file changes.
+- Read `file://` specs (JSON / YAML) and reload when the file changes.
 - Explorer right-click on a spec file → **Add to OpenAPI Explorer** (`explorer/context`, filtered with `resourceFilename =~ /(openapi|swagger|api-docs)/` — https://code.visualstudio.com/api/references/when-clause-contexts).
+- External `$ref` (specs split across files or URLs), for local and remote specs. The approach (own bundler vs a library) is decided from research before work starts.
 
-### 1.3.0 — Code generation
+Done when: a split multi-file spec opens from the Explorer and from a URL, and edits to any of its files show up.
+
+### 1.4.0 — Code generation
 
 The reference is the actual output of openapi-typescript 7.13.0.
 
@@ -86,15 +89,22 @@ The reference is the actual output of openapi-typescript 7.13.0.
 
 Done when: E5–E11 tests pass and the generated code passes `tsc --noEmit`.
 
-### 1.4.0 — UX
+### 1.5.0 — UX
 
-- R5: dark theme, based on the `vscode-dark` body class (https://code.visualstudio.com/api/extension-guides/webview).
+- R5: dark theme for Swagger UI, based on the `vscode-dark` body class (https://code.visualstudio.com/api/extension-guides/webview).
 - Loading indicator via `withProgress({ viewId })`.
 - Retry action on nodes that failed to load.
 
+### Any time — Release automation
+
+- Tag push → build, test, GitHub release and Open VSX publish (as Gitline does).
+- Update `actions/setup-node` (Node 20 deprecation warning on the runners).
+- Check whether a newer Playwright removes the need for the `ubuntu-24.04` runner pin.
+- README images are recorded against an English sample gateway.
+
 ### On hold
 
-External `$ref`, local files, and auth UI for apiKey, OAuth2, and mutualTLS.
+apiKey / OAuth2 / mutualTLS auth UI; springdoc custom `configUrl` (set in `swagger-initializer.js`); VS Code Marketplace publishing.
 
 ## Testing
 
@@ -118,6 +128,10 @@ External `$ref`, local files, and auth UI for apiKey, OAuth2, and mutualTLS.
 | 2026-11-11 | Manage APIs like Explorer root folders: view-title ＋, node right-click Add/Rename/Edit URL/Copy URL/Remove, F2/Delete                                        | Explorer adds and removes workspace folders from the root folder's context menu (https://code.visualstudio.com/docs/editing/workspaces/multi-root-workspaces). Extensions cannot add a menu to a tree's empty area: only `view/title` and `view/item/context` exist (VS Code `menusExtensionPoint.ts`) |
 | 2026-11-11 | Keep `swaggerViewer.url` as is (listed next to `specs`) instead of migrating it                                                                               | Migrating would rewrite each project's `.vscode/settings.json`, which may be shared with a team                                                                                                                                                                                                        |
 | 2026-11-11 | "Opening a method jumps to the bottom" closed as not reproducible                                                                                             | Not reproduced with Petstore 3 or the sample gateway in a real VS Code (`test/e2e/vscode-scroll.ts`); maintainer confirmed it looks fine                                                                                                                                                               |
+| 2026-11-13 | Order after 1.2.0: local files + external `$ref` (1.3.0) → code generation (1.4.0) → UX (1.5.0)                                                               | Maintainer decision                                                                                                                                                                                                                                                                                    |
+| 2026-11-13 | External `$ref` is in scope for 1.3.0                                                                                                                         | Maintainer decision; split specs are common once local files are supported                                                                                                                                                                                                                             |
+| 2026-11-13 | VS Code Marketplace publishing later; Open VSX only for now                                                                                                   | Maintainer decision                                                                                                                                                                                                                                                                                    |
+| 2026-11-13 | README images recorded against an English sample gateway                                                                                                      | Maintainer decision; the README is read in English first                                                                                                                                                                                                                                               |
 
 ## Sources
 

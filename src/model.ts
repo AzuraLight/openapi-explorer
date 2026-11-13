@@ -52,12 +52,17 @@ export function listEndpoints(spec: OpenApiSpec): EndpointSummary[] {
   return out;
 }
 
+// Computed once per loaded spec object: expanding many tags must not regroup every endpoint each time.
+const groupCache = new WeakMap<OpenApiSpec, Map<string, EndpointSummary[]>>();
 export function groupByTag(spec: OpenApiSpec): Map<string, EndpointSummary[]> {
+  const cached = groupCache.get(spec);
+  if (cached) return cached;
   const groups = new Map<string, EndpointSummary[]>();
   for (const e of listEndpoints(spec)) {
     if (!groups.has(e.tag)) groups.set(e.tag, []);
     groups.get(e.tag)!.push(e);
   }
+  groupCache.set(spec, groups);
   return groups;
 }
 
@@ -89,17 +94,26 @@ function effectiveParameters(spec: OpenApiSpec, path: string, op: Operation): Pa
 
 // Swagger 2 has no requestBody: `in: body` is the body; `in: formData` params form one
 // (multipart if consumes says so or a param is a file, else urlencoded).
-function swagger2RequestBody(spec: OpenApiSpec, op: Operation, params: Parameter[]): EndpointDetail["requestBody"] {
+function swagger2RequestBody(
+  spec: OpenApiSpec,
+  op: Operation,
+  params: Parameter[]
+): EndpointDetail["requestBody"] {
   const consumes = op.consumes || spec.consumes || [];
   const body = params.find((p) => p.in === "body");
   if (body) {
-    return { contentType: consumes[0] || "application/json", schema: shortType(body.schema), required: !!body.required };
+    return {
+      contentType: consumes[0] || "application/json",
+      schema: shortType(body.schema),
+      required: !!body.required,
+    };
   }
   const form = params.filter((p) => p.in === "formData");
   if (!form.length) return null;
   const multipart = consumes.includes("multipart/form-data") || form.some((p) => p.type === "file");
   const properties: Record<string, Schema> = {};
-  for (const p of form) properties[p.name || ""] = { type: p.type, format: p.format, items: p.items, enum: p.enum };
+  for (const p of form)
+    properties[p.name || ""] = { type: p.type, format: p.format, items: p.items, enum: p.enum };
   return {
     contentType: multipart ? "multipart/form-data" : "application/x-www-form-urlencoded",
     schema: shortType({ type: "object", properties }),
@@ -184,15 +198,37 @@ export function modelDetail(spec: OpenApiSpec, name: string): ModelDetail | null
 }
 
 // ---- TS type generation ----
+// Reference: openapi-typescript 7.13.0's actual output (docs/ROADMAP.md, code generation).
+const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+const propKey = (k: string) => (IDENT.test(k) ? k : JSON.stringify(k));
+
+// Parenthesize a union/intersection before `[]` or `&` so precedence stays as written.
+const paren = (t: string) => (/[|&]/.test(t) && !/^\{[\s\S]*\}$/.test(t) ? `(${t})` : t);
+
 export function tsType(schema?: Schema): string {
-  if (!schema) return "any";
-  if (schema.$ref) return refName(schema.$ref) ?? "any";
-  if (schema.allOf) return schema.allOf.map(tsType).join(" & ");
+  if (!schema || typeof schema !== "object") return "unknown";
+  const t = tsTypeCore(schema);
+  // OAS 3.0 `nullable: true` → `| null`
+  return schema.nullable === true && !/(^|\| )null$/.test(t) ? `${t} | null` : t;
+}
+
+const BLOB = "x-oae-blob"; // marks a multipart file field (see blobFields)
+
+function tsTypeCore(schema: Schema): string {
+  if (schema[BLOB]) return "Blob";
+  if (schema.$ref) return refName(schema.$ref) ?? "unknown";
+  if (schema.allOf) return schema.allOf.map((s) => paren(tsType(s))).join(" & ");
   if (schema.oneOf) return schema.oneOf.map(tsType).join(" | ");
   if (schema.anyOf) return schema.anyOf.map(tsType).join(" | ");
   if (schema.enum) return schema.enum.map((e) => JSON.stringify(e)).join(" | ");
-  if (schema.type === "array") return `${tsType(schema.items)}[]`;
-  switch (schema.type) {
+  const type = schema.type as unknown;
+  // OAS 3.1 type arrays: ["string", "null"] → string | null
+  if (Array.isArray(type)) {
+    return type.map((x) => (x === "null" ? "null" : tsTypeCore({ ...schema, type: x }))).join(" | ");
+  }
+  switch (type) {
+    case "array":
+      return `${paren(tsType(schema.items))}[]`;
     case "integer":
     case "number":
       return "number";
@@ -200,159 +236,304 @@ export function tsType(schema?: Schema): string {
       return "boolean";
     case "string":
       return "string";
+    case "null":
+      return "null";
     case "object":
-      if (schema.properties) return inlineObject(schema);
-      return "Record<string, any>";
+    case undefined:
+      return objectType(schema);
     default:
-      if (schema.properties) return inlineObject(schema);
-      return "any";
+      return "unknown";
   }
+}
+
+function objectType(schema: Schema): string {
+  const ap = schema.additionalProperties as Schema | boolean | undefined;
+  const parts: string[] = [];
+  if (schema.properties) parts.push(inlineObject(schema));
+  if (ap === true || (ap && typeof ap === "object")) {
+    const v = ap === true || Object.keys(ap).length === 0 ? "unknown" : tsType(ap);
+    parts.push(`{\n  [key: string]: ${v};\n}`);
+  }
+  if (parts.length) return parts.join(" & ");
+  return schema.type === "object" ? "Record<string, never>" : "unknown";
 }
 
 function inlineObject(schema: Schema): string {
   const req = new Set(schema.required || []);
   const lines = Object.entries(schema.properties || {}).map(
-    ([k, v]) => `  ${k}${req.has(k) ? "" : "?"}: ${tsType(v)};`
+    ([k, v]) => `  ${propKey(k)}${req.has(k) ? "" : "?"}: ${tsType(v)};`
   );
   return `{\n${lines.join("\n")}\n}`;
 }
 
-function collectRefs(schema: Schema | undefined, set: Set<string>): void {
+function collectRefs(schema: unknown, set: Set<string>): void {
   if (!schema || typeof schema !== "object") return;
-  if (schema.$ref) {
-    const n = refName(schema.$ref);
+  if (Array.isArray(schema)) {
+    schema.forEach((s) => collectRefs(s, set));
+    return;
+  }
+  const s = schema as Schema;
+  if (typeof s.$ref === "string") {
+    const n = refName(s.$ref);
     if (n) set.add(n);
   }
-  if (schema.items) collectRefs(schema.items, set);
-  for (const key of ["allOf", "oneOf", "anyOf"] as const) {
-    const arr = schema[key];
-    if (Array.isArray(arr)) arr.forEach((s) => collectRefs(s, set));
-  }
-  if (schema.properties) Object.values(schema.properties).forEach((s) => collectRefs(s, set));
+  collectRefs(s.items, set);
+  for (const key of ["allOf", "oneOf", "anyOf"] as const) collectRefs(s[key], set);
+  if (s.properties) Object.values(s.properties).forEach((v) => collectRefs(v, set));
+  if (s.additionalProperties && typeof s.additionalProperties === "object")
+    collectRefs(s.additionalProperties, set);
 }
 
-export function genTsForModel(spec: OpenApiSpec, name: string, seen = new Set<string>()): string {
-  if (seen.has(name)) return "";
-  seen.add(name);
-  const schemas = getSchemas(spec);
-  const schema = schemas[name];
-  if (!schema) return `// ${name} (no definition)`;
-  const req = new Set(schema.required || []);
-  const deps = new Set<string>();
-  const lines = Object.entries(schema.properties || {}).map(([k, v]) => {
-    collectRefs(v, deps);
-    const doc = v.description ? `  /** ${v.description} */\n` : "";
-    return `${doc}  ${k}${req.has(k) ? "" : "?"}: ${tsType(v)};`;
-  });
+// One model: an interface for a plain object with properties, otherwise a type alias
+// (top-level enum, allOf, array, primitives — like openapi-typescript).
+function modelBlock(name: string, schema: Schema): string {
   const head = schema.description ? `/** ${schema.description} */\n` : "";
-  let out = `${head}export interface ${name} {\n${lines.join("\n")}\n}`;
+  const plainObject =
+    !schema.$ref &&
+    !schema.allOf &&
+    !schema.oneOf &&
+    !schema.anyOf &&
+    !schema.enum &&
+    !schema.additionalProperties &&
+    !schema.nullable &&
+    (schema.type === "object" || schema.type === undefined) &&
+    !!schema.properties;
+  if (!plainObject) return `${head}export type ${name} = ${tsType(schema)};`;
+  const req = new Set(schema.required || []);
+  const lines = Object.entries(schema.properties || {}).map(([k, v]) => {
+    const doc = v.description ? `  /** ${v.description} */\n` : "";
+    return `${doc}  ${propKey(k)}${req.has(k) ? "" : "?"}: ${tsType(v)};`;
+  });
+  return `${head}export interface ${name} {\n${lines.join("\n")}\n}`;
+}
+
+// The model and every model it depends on, each once. Iterative (no recursion): deeply chained
+// specs with thousands of models do not overflow the stack.
+export function genTsForModel(spec: OpenApiSpec, name: string, seen = new Set<string>()): string {
+  const schemas = getSchemas(spec);
+  if (!schemas[name]) return seen.has(name) ? "" : `// ${name} (no definition)`;
+  const blocks: string[] = [];
+  const queue = [name];
+  for (let i = 0; i < queue.length; i++) {
+    const n = queue[i];
+    if (seen.has(n) || !schemas[n]) continue;
+    seen.add(n);
+    blocks.push(modelBlock(n, schemas[n]));
+    const deps = new Set<string>();
+    collectRefs(schemas[n], deps);
+    for (const d of deps) if (!seen.has(d) && schemas[d]) queue.push(d);
+  }
+  return blocks.join("\n\n");
+}
+
+function modelsFor(spec: OpenApiSpec, schema: Schema | undefined, seen = new Set<string>()): string {
+  const deps = new Set<string>();
+  collectRefs(schema, deps);
+  const blocks: string[] = [];
   for (const d of deps) {
-    if (d !== name && schemas[d]) {
-      const sub = genTsForModel(spec, d, seen);
-      if (sub) out += `\n\n${sub}`;
+    if (getSchemas(spec)[d]) {
+      const b = genTsForModel(spec, d, seen);
+      if (b) blocks.push(b);
     }
   }
-  return out;
+  return blocks.join("\n\n");
 }
 
 export function genTsForEndpoint(spec: OpenApiSpec, detail: EndpointDetail): string {
-  const seen = new Set<string>();
-  let out = `// ${detail.method} ${detail.path}${detail.summary ? `  —  ${detail.summary}` : ""}\n`;
-
-  const op = spec.paths?.[detail.path]?.[detail.method.toLowerCase()] as Operation | undefined;
-  const schema = successResponseSchema(spec, op);
-
-  if (!schema) {
-    out += `type Response = void;`;
-    return out;
-  }
-  const deps = new Set<string>();
-  collectRefs(schema, deps);
-  const blocks: string[] = [];
-  for (const d of deps) {
-    if (getSchemas(spec)[d]) {
-      const b = genTsForModel(spec, d, seen);
-      if (b) blocks.push(b);
-    }
-  }
-  if (blocks.length) out += blocks.join("\n\n") + "\n\n";
-  out += `type Response = ${tsType(schema)};`;
-  return out;
+  const out = `// ${detail.method} ${detail.path}${detail.summary ? `  —  ${detail.summary}` : ""}\n`;
+  const schema = successResponseSchema(spec, operationOf(spec, detail));
+  if (!schema) return out + `type Response = void;`;
+  const models = modelsFor(spec, schema);
+  return out + (models ? models + "\n\n" : "") + `type Response = ${tsType(schema)};`;
 }
 
 // ---- Client function generation (fetch / axios) ----
+function operationOf(spec: OpenApiSpec, detail: EndpointDetail): Operation | undefined {
+  return spec.paths?.[detail.path]?.[detail.method.toLowerCase()] as Operation | undefined;
+}
+
 function camelize(s: string): string {
   const cleaned = s.replace(/[^A-Za-z0-9]+/g, " ").trim();
-  const parts = cleaned.split(/\s+/);
+  const parts = cleaned.split(/\s+/).filter(Boolean);
   return parts
-    .map((p, i) => (i === 0 ? p.charAt(0).toLowerCase() + p.slice(1) : p.charAt(0).toUpperCase() + p.slice(1)))
+    .map((p, i) =>
+      i === 0 ? p.charAt(0).toLowerCase() + p.slice(1) : p.charAt(0).toUpperCase() + p.slice(1)
+    )
     .join("");
 }
 
+// A valid identifier: camelCase, with "_" in front when it would start with a digit (or be empty).
+function ident(s: string): string {
+  const c = camelize(s);
+  return /^[A-Za-z_$]/.test(c) ? c : `_${c}`;
+}
+
 function fnName(spec: OpenApiSpec, detail: EndpointDetail): string {
-  const op = spec.paths?.[detail.path]?.[detail.method.toLowerCase()] as Operation | undefined;
-  if (op?.operationId) return camelize(op.operationId);
+  const op = operationOf(spec, detail);
+  if (op?.operationId) return ident(op.operationId);
   const segs = detail.path.replace(/[{}]/g, "").split("/").filter(Boolean);
-  return camelize(`${detail.method.toLowerCase()} ${segs.join(" ")}`);
+  return ident(`${detail.method.toLowerCase()} ${segs.join(" ")}`);
 }
 
 function responseModelsAndType(spec: OpenApiSpec, detail: EndpointDetail): { models: string; type: string } {
-  const op = spec.paths?.[detail.path]?.[detail.method.toLowerCase()] as Operation | undefined;
-  const schema = successResponseSchema(spec, op);
+  const schema = successResponseSchema(spec, operationOf(spec, detail));
   if (!schema) return { models: "", type: "void" };
-  const seen = new Set<string>();
-  const deps = new Set<string>();
-  collectRefs(schema, deps);
-  const blocks: string[] = [];
-  for (const d of deps) {
-    if (getSchemas(spec)[d]) {
-      const b = genTsForModel(spec, d, seen);
-      if (b) blocks.push(b);
-    }
-  }
-  return { models: blocks.join("\n\n"), type: tsType(schema) };
+  return { models: modelsFor(spec, schema), type: tsType(schema) };
 }
 
-// Parameter fragments for the function signature + URL/query/body construction
-function clientParts(detail: EndpointDetail) {
-  const pathParams = detail.parameters.filter((p) => p.in === "path");
-  const queryParams = detail.parameters.filter((p) => p.in === "query");
+// Parameter schema (OAS 3 `schema`, Swagger 2 inline type/items/enum).
+function paramSchema(p: Parameter): Schema {
+  return p.schema || { type: p.type, format: p.format, items: p.items, enum: p.enum };
+}
+
+// Request body: OAS 3 requestBody (first media type), Swagger 2 `in: body` / `in: formData`.
+function requestBodyOf(
+  spec: OpenApiSpec,
+  detail: EndpointDetail
+): { schema: Schema | undefined; contentType: string } | null {
+  const op = operationOf(spec, detail);
+  if (!op) return null;
+  if (op.requestBody) {
+    const rb = deref(spec, op.requestBody as typeof op.requestBody & { $ref?: string });
+    const content = rb.content || {};
+    const mime = Object.keys(content)[0];
+    return mime ? { schema: content[mime]?.schema, contentType: mime } : null;
+  }
+  if (!spec.swagger) return null;
+  const params = effectiveParameters(spec, detail.path, op);
+  const consumes = op.consumes || spec.consumes || [];
+  const body = params.find((p) => p.in === "body");
+  if (body) return { schema: body.schema, contentType: consumes[0] || "application/json" };
+  const form = params.filter((p) => p.in === "formData");
+  if (!form.length) return null;
+  const properties: Record<string, Schema> = {};
+  for (const p of form) {
+    properties[p.name || ""] = p.type === "file" ? { type: "string", format: "binary" } : paramSchema(p);
+  }
+  const required = form.filter((p) => p.required).map((p) => p.name || "");
+  const multipart = consumes.includes("multipart/form-data") || form.some((p) => p.type === "file");
+  return {
+    schema: { type: "object", properties, required },
+    contentType: multipart ? "multipart/form-data" : "application/x-www-form-urlencoded",
+  };
+}
+
+// Properties of a body schema (following one $ref) — for form fields.
+function bodyProperties(spec: OpenApiSpec, schema: Schema | undefined): [string, Schema][] {
+  const s = schema?.$ref ? getSchemas(spec)[refName(schema.$ref) || ""] : schema;
+  return Object.entries(s?.properties || {});
+}
+
+// A multipart body's binary fields take a Blob (a file) in the generated function's argument.
+function blobFields(spec: OpenApiSpec, schema: Schema | undefined): Schema | undefined {
+  const props = bodyProperties(spec, schema);
+  if (!props.length) return schema;
+  const base = schema?.$ref ? getSchemas(spec)[refName(schema.$ref) || ""] : schema;
+  const isBin = (v: Schema) => v.format === "binary" || v.format === "byte";
+  const properties = Object.fromEntries(
+    props.map(([k, v]) => [
+      k,
+      isBin(v)
+        ? { [BLOB]: true }
+        : v.type === "array" && v.items && isBin(v.items)
+          ? { type: "array", items: { [BLOB]: true } }
+          : v,
+    ])
+  );
+  return { ...base, properties };
+}
+
+type BodyKind = "json" | "multipart" | "form";
+const bodyKind = (contentType: string): BodyKind =>
+  /multipart\/form-data/i.test(contentType)
+    ? "multipart"
+    : /x-www-form-urlencoded/i.test(contentType)
+      ? "form"
+      : "json";
+
+// Parameter fragments for the function signature + URL/query/header/body construction
+function clientParts(spec: OpenApiSpec, detail: EndpointDetail) {
+  const op = operationOf(spec, detail);
+  const params = op ? effectiveParameters(spec, detail.path, op) : [];
+  const of = (where: string) => params.filter((p) => p.in === where);
+  const pathParams = of("path");
+  const queryParams = of("query");
+  const headerParams = of("header");
   const sig: string[] = [];
-  for (const p of pathParams) sig.push(`${p.name}: ${tsParamType(p.type)}`);
-  if (queryParams.length) {
-    const q = queryParams.map((p) => `${p.name}${p.required ? "" : "?"}: ${tsParamType(p.type)}`).join("; ");
-    sig.push(`query: { ${q} }`);
+  for (const p of pathParams) sig.push(`${ident(p.name || "")}: ${tsType(paramSchema(p))}`);
+  const objectArg = (name: string, list: Parameter[]) => {
+    const fields = list.map(
+      (p) => `${propKey(p.name || "")}${p.required ? "" : "?"}: ${tsType(paramSchema(p))}`
+    );
+    sig.push(`${name}: { ${fields.join("; ")} }`);
+  };
+  if (queryParams.length) objectArg("query", queryParams);
+  if (headerParams.length) objectArg("headers", headerParams);
+  const body = requestBodyOf(spec, detail);
+  if (body) {
+    const bodySchema =
+      bodyKind(body.contentType) === "multipart" ? blobFields(spec, body.schema) : body.schema;
+    sig.push(`body: ${tsType(bodySchema)}`);
   }
-  if (detail.requestBody) sig.push(`body: ${detail.requestBody.schema || "unknown"}`);
-  const pathExpr = detail.path.replace(/\{(\w+)\}/g, "${$1}");
-  return { sig: sig.join(", "), pathExpr, hasQuery: queryParams.length > 0, hasBody: !!detail.requestBody };
+  let pathExpr = detail.path;
+  for (const p of pathParams) pathExpr = pathExpr.split(`{${p.name}}`).join(`\${${ident(p.name || "")}}`);
+  const headerEntries = headerParams.map(
+    (p) => `${JSON.stringify(p.name)}: headers[${JSON.stringify(p.name)}]`
+  );
+  return { sig: sig.join(", "), pathExpr, hasQuery: queryParams.length > 0, headerEntries, body };
 }
 
-// shortType (integer, etc.) → TS parameter type
-function tsParamType(t: string): string {
-  if (t === "integer") return "number";
-  return t || "string";
+// Query string from the query object: unset values are left out, arrays repeat the key (form, explode).
+const QS_LINES = `  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(query)) {
+    if (v === undefined || v === null) continue;
+    for (const x of Array.isArray(v) ? v : [v]) qs.append(k, String(x));
+  }`;
+
+// Form body from the body object: FormData (multipart, files as Blob) or URLSearchParams (urlencoded).
+function formLines(kind: BodyKind): string {
+  const value = kind === "multipart" ? "x instanceof Blob ? x : String(x)" : "String(x)";
+  return `  const form = new ${kind === "multipart" ? "FormData" : "URLSearchParams"}();
+  for (const [k, v] of Object.entries(body)) {
+    if (v === undefined || v === null) continue;
+    for (const x of Array.isArray(v) ? v : [v]) form.append(k, ${value});
+  }`;
 }
 
 export function genFetchClient(spec: OpenApiSpec, detail: EndpointDetail, baseUrl: string): string {
   const origin = resolveBaseUrl(spec, baseUrl);
   const name = fnName(spec, detail);
   const { models, type } = responseModelsAndType(spec, detail);
-  const { sig, pathExpr, hasQuery, hasBody } = clientParts(detail);
-  const qInit = hasQuery
-    ? `\n  const qs = new URLSearchParams(query as Record<string, string>).toString();`
-    : "";
+  const { sig, pathExpr, hasQuery, headerEntries, body } = clientParts(spec, detail);
+  const pre: string[] = [];
+  if (hasQuery) pre.push(QS_LINES);
+  const reqHeaders = [...headerEntries];
+  let bodyExpr = "";
+  if (body) {
+    const kind = bodyKind(body.contentType);
+    if (kind === "json") {
+      reqHeaders.unshift(`"Content-Type": ${JSON.stringify(body.contentType || "application/json")}`);
+      bodyExpr = "JSON.stringify(body)";
+    } else {
+      // multipart: no Content-Type — fetch sets multipart/form-data with its boundary.
+      pre.push(formLines(kind));
+      if (kind === "form") reqHeaders.unshift(`"Content-Type": "application/x-www-form-urlencoded"`);
+      bodyExpr = "form";
+    }
+  }
   const urlExpr = hasQuery ? `\`${origin}${pathExpr}?\${qs}\`` : `\`${origin}${pathExpr}\``;
-  const init = [`    method: "${detail.method}"`, `    headers: { "Content-Type": "application/json" }`];
-  if (hasBody) init.push(`    body: JSON.stringify(body)`);
+  const init = [`    method: "${detail.method}"`];
+  if (reqHeaders.length) init.push(`    headers: { ${reqHeaders.join(", ")} }`);
+  if (bodyExpr) init.push(`    body: ${bodyExpr}`);
+  // void (e.g. 204): no body to parse.
+  const ret = type === "void" ? "" : `\n  return res.json() as Promise<${type}>;`;
   const head = models ? `${models}\n\n` : "";
   return `${head}// ${detail.method} ${detail.path}${detail.summary ? `  —  ${detail.summary}` : ""}
-export async function ${name}(${sig}): Promise<${type}> {${qInit}
-  const res = await fetch(${urlExpr}, {
+export async function ${name}(${sig}): Promise<${type}> {
+${pre.length ? pre.join("\n") + "\n" : ""}  const res = await fetch(${urlExpr}, {
 ${init.join(",\n")},
   });
-  if (!res.ok) throw new Error(\`${name} failed: \${res.status}\`);
-  return res.json() as Promise<${type}>;
+  if (!res.ok) throw new Error(\`${name} failed: \${res.status}\`);${ret}
 }`;
 }
 
@@ -360,19 +541,31 @@ export function genAxiosClient(spec: OpenApiSpec, detail: EndpointDetail, baseUr
   const origin = resolveBaseUrl(spec, baseUrl);
   const name = fnName(spec, detail);
   const { models, type } = responseModelsAndType(spec, detail);
-  const { sig, pathExpr, hasQuery, hasBody } = clientParts(detail);
+  const { sig, pathExpr, hasQuery, headerEntries, body } = clientParts(spec, detail);
+  const pre: string[] = [];
   const cfg: string[] = [];
-  if (hasQuery) cfg.push(`    params: query`);
-  const args = [`\`${origin}${pathExpr}\``];
+  if (hasQuery) cfg.push(`    params: query`); // axios leaves out undefined params
+  if (headerEntries.length) cfg.push(`    headers: { ${headerEntries.join(", ")} }`);
   const method = detail.method.toLowerCase();
-  if (hasBody) args.push(`body`);
+  const withData = /^(post|put|patch)$/.test(method);
+  const args = [`\`${origin}${pathExpr}\``];
+  if (body) {
+    const kind = bodyKind(body.contentType);
+    if (kind === "json") args.push("body");
+    else {
+      pre.push(formLines(kind));
+      args.push("form");
+    }
+  } else if (cfg.length && withData) {
+    args.push("undefined");
+  }
   if (cfg.length) args.push(`{\n${cfg.join(",\n")},\n  }`);
   const head = models ? `${models}\n\n` : "";
   return `${head}import axios from "axios";
 
 // ${detail.method} ${detail.path}${detail.summary ? `  —  ${detail.summary}` : ""}
 export async function ${name}(${sig}): Promise<${type}> {
-  const res = await axios.${method}<${type}>(${args.join(", ")});
+${pre.length ? pre.join("\n") + "\n" : ""}  const res = await axios.${method}<${type}>(${args.join(", ")});
   return res.data;
 }`;
 }
@@ -443,8 +636,18 @@ export function genCurl(spec: OpenApiSpec, detail: EndpointDetail, baseUrl: stri
   const hasAuth = !!(spec.components?.securitySchemes || spec.securityDefinitions);
   const auth = hasAuth ? ` \\\n  -H 'Authorization: Bearer <token>'` : "";
   let body = "";
-  if (detail.requestBody) {
-    body = ` \\\n  -H 'Content-Type: ${detail.requestBody.contentType || "application/json"}' \\\n  -d '{ /* ${detail.requestBody.schema} */ }'`;
+  const rb = requestBodyOf(spec, detail);
+  if (rb) {
+    const kind = bodyKind(rb.contentType);
+    const props = bodyProperties(spec, rb.schema);
+    if (kind === "multipart") {
+      // curl -F builds the multipart body and its boundary itself; "@" uploads a file.
+      body = props.map(([k, v]) => ` \\\n  -F '${k}=${v.format === "binary" ? "@" : ""}<${k}>'`).join("");
+    } else if (kind === "form") {
+      body = props.map(([k]) => ` \\\n  --data-urlencode '${k}=<${k}>'`).join("");
+    } else {
+      body = ` \\\n  -H 'Content-Type: ${rb.contentType || "application/json"}' \\\n  -d '{ /* ${detail.requestBody?.schema ?? ""} */ }'`;
+    }
   }
   return `curl -X ${detail.method} '${origin}${path}${qs}'${headerLines}${auth}${body}`;
 }

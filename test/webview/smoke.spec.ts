@@ -20,6 +20,7 @@ test("webview renders operations and Try it out goes through the extension proxy
   };
   const r = renderWebview(spec, `${srv.origin}/v3/api-docs`);
   await openInPage(page, r);
+  await page.locator("#operations-tag-health").click(); // tags start collapsed
   const op = page.locator("#operations-health-ping");
   await op.locator(".opblock-summary-control").click();
   await op.locator("button.try-out__btn").click();
