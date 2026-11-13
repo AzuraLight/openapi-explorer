@@ -42,8 +42,8 @@ export async function openInPage(page: Page, r: Rendered): Promise<void> {
   });
   // getState/setState: VS Code keeps the state while the panel is hidden and hands it back on reload.
   await page.exposeFunction("__setState", (s: unknown) => void (r.state = s));
-  await page.addInitScript((saved) => {
-    let state = saved;
+  await page.addInitScript((saved: unknown) => {
+    let state: unknown = saved;
     (window as any).acquireVsCodeApi = () => ({
       postMessage: (m: unknown) =>
         (window as any).__toExtension(m).then((reply: unknown) => reply && window.postMessage(reply, "*")),
