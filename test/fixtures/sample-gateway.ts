@@ -9,31 +9,135 @@
 import * as http from "node:http";
 import type { AddressInfo } from "node:net";
 
-const LOREM =
-  "이 API는 학습 관리 시스템의 핵심 기능을 제공합니다. 요청 시 인증 토큰이 필요하며, " +
-  "응답은 공통 래퍼(`success`, `data`, `error`)로 감싸서 반환합니다.";
+export type SampleLang = "en" | "ko";
 
-// Domains → tags (Korean names with spaces, like real Korean backends).
-const DOMAINS: { group: string; tags: string[]; entity: string }[] = [
-  {
-    group: "learning",
-    tags: ["학습자 관리", "강좌 관리", "수강 신청", "학습 진도", "평가 관리"],
-    entity: "Learner",
+// English tag → singular noun for summaries ("Get a product by id").
+const SINGULAR: Record<string, string> = {
+  Products: "product",
+  Categories: "category",
+  Reviews: "review",
+  Inventory: "inventory item",
+  Promotions: "promotion",
+  Orders: "order",
+  Payments: "payment",
+  Refunds: "refund",
+  Shipments: "shipment",
+  Customers: "customer",
+  Addresses: "address",
+  Sessions: "session",
+  Preferences: "preference",
+};
+const one = (tag: string) => SINGULAR[tag] ?? tag.toLowerCase();
+
+// Text of the sample, per language. English is the default (README images); Korean keeps names with
+// spaces and non-ASCII tags, as on real Korean backends (edge cases such as Swagger UI's DOM ids).
+const TEXT = {
+  en: {
+    lorem:
+      "Core endpoints of the online store. Requests need a bearer token, and every response is wrapped in " +
+      "a common envelope (`success`, `data`, `error`).",
+    domains: [
+      {
+        group: "store",
+        title: "Store",
+        tags: ["Products", "Categories", "Reviews", "Inventory", "Promotions"],
+        entity: "Product",
+      },
+      {
+        group: "orders",
+        title: "Orders",
+        tags: ["Orders", "Payments", "Refunds", "Shipments"],
+        entity: "Order",
+      },
+      {
+        group: "accounts",
+        title: "Accounts",
+        tags: ["Customers", "Addresses", "Sessions", "Preferences"],
+        entity: "Customer",
+      },
+    ],
+    dto: (tag: string) => `${tag} response`,
+    id: "Identifier",
+    nameField: "Name",
+    names: ["Ada Lovelace", "Grace Hopper", "Alan Turing"],
+    ok: "OK",
+    created: "Created",
+    deleted: "Deleted",
+    badRequest: "Bad request",
+    unauthorized: "Authentication required",
+    list: (t: string) => `List ${t.toLowerCase()}`,
+    create: (t: string) => `Create a ${one(t)}`,
+    get: (t: string) => `Get a ${one(t)} by id`,
+    update: (t: string) => `Update a ${one(t)}`,
+    remove: (t: string) => `Delete a ${one(t)}`,
+    items: (t: string) => `Line items of a ${one(t)}`,
+    paging: "- Pagination: `page`, `size`\n- Sorting: `createdAt,desc`",
+    service: (t: string) => `${t} service`,
+    auth: "Authentication",
+    authText: "Send a bearer token in the `Authorization` header.",
+    codes: "| Code | Meaning |\n|---|---|\n| E001 | Invalid input |\n| E002 | Forbidden |\n",
+    item: { title: "Gift wrap", tags: ["new"], cohort: "2026-11" },
   },
-  { group: "admin", tags: ["관리자 계정", "권한 관리", "공지사항", "시스템 설정"], entity: "Admin" },
-  { group: "billing", tags: ["결제 관리", "환불 처리", "정산 리포트", "쿠폰 관리"], entity: "Payment" },
-];
+  ko: {
+    lorem:
+      "이 API는 학습 관리 시스템의 핵심 기능을 제공합니다. 요청 시 인증 토큰이 필요하며, " +
+      "응답은 공통 래퍼(`success`, `data`, `error`)로 감싸서 반환합니다.",
+    domains: [
+      {
+        group: "learning",
+        title: "learning",
+        tags: ["학습자 관리", "강좌 관리", "수강 신청", "학습 진도", "평가 관리"],
+        entity: "Learner",
+      },
+      {
+        group: "admin",
+        title: "admin",
+        tags: ["관리자 계정", "권한 관리", "공지사항", "시스템 설정"],
+        entity: "Admin",
+      },
+      {
+        group: "billing",
+        title: "billing",
+        tags: ["결제 관리", "환불 처리", "정산 리포트", "쿠폰 관리"],
+        entity: "Payment",
+      },
+    ],
+    dto: (tag: string) => `${tag} 응답 DTO`,
+    id: "식별자",
+    nameField: "이름",
+    names: ["홍길동", "김민지", "이서준"],
+    ok: "성공",
+    created: "등록됨",
+    deleted: "삭제됨",
+    badRequest: "잘못된 요청",
+    unauthorized: "인증 필요",
+    list: (t: string) => `${t} 목록 조회`,
+    create: (t: string) => `${t} 등록`,
+    get: (t: string) => `${t} 상세 조회`,
+    update: (t: string) => `${t} 수정`,
+    remove: (t: string) => `${t} 삭제`,
+    items: (t: string) => `${t} 하위 항목`,
+    paging: "- 페이지네이션 지원\n- 정렬: `createdAt,desc`",
+    service: (t: string) => `${t} 서비스`,
+    auth: "인증",
+    authText: "Bearer 토큰을 `Authorization` 헤더에 넣으세요.",
+    codes: "| 코드 | 의미 |\n|---|---|\n| E001 | 잘못된 입력 |\n| E002 | 권한 없음 |\n",
+    item: { title: "OT", tags: ["beginner"], cohort: "2026-11" },
+  },
+};
+type Text = (typeof TEXT)["en"];
+type Domain = Text["domains"][number];
 
-function schemaSet(entity: string, tag: string, i: number) {
+function schemaSet(T: Text, entity: string, tag: string, i: number) {
   const base = `${entity}${i}`;
   return {
     [`${base}Dto`]: {
       type: "object",
-      description: `${tag} 응답 DTO`,
+      description: T.dto(tag),
       required: ["id"],
       properties: {
-        id: { type: "integer", format: "int64", description: "식별자" },
-        name: { type: "string", description: "이름", example: "홍길동" },
+        id: { type: "integer", format: "int64", description: T.id },
+        name: { type: "string", description: T.nameField, example: T.names[0] },
         status: { type: "string", enum: ["ACTIVE", "INACTIVE", "DELETED"] },
         createdAt: { type: "string", format: "date-time" },
         detail: { $ref: `#/components/schemas/${base}Detail` },
@@ -69,7 +173,7 @@ const envelope = (ref: string) => ({
   },
 });
 
-function buildGroupSpec(d: (typeof DOMAINS)[number], baseIndex: number) {
+function buildGroupSpec(T: Text, d: Domain, baseIndex: number) {
   const paths: Record<string, any> = {};
   const schemas: Record<string, any> = {};
   const seen = new Map<string, number>(); // springdoc appends _1, _2 to duplicate operationIds
@@ -80,19 +184,20 @@ function buildGroupSpec(d: (typeof DOMAINS)[number], baseIndex: number) {
   };
   d.tags.forEach((tag, t) => {
     const i = baseIndex + t;
-    const res = `/api/v1/${d.group}/r${i}`;
-    Object.assign(schemas, schemaSet(d.entity, tag, i));
+    // English: readable resource paths (/api/v1/products); Korean tags are not path-safe, so r<n>.
+    const res = T === TEXT.en ? `/api/v1/${tag.toLowerCase()}` : `/api/v1/${d.group}/r${i}`;
+    Object.assign(schemas, schemaSet(T, d.entity, tag, i));
     const dto = `#/components/schemas/${d.entity}${i}Dto`;
-    const ok = (ref: string, desc = "성공") => ({
+    const ok = (ref: string, desc = T.ok) => ({
       "200": { description: desc, content: { "application/json": { schema: envelope(ref) } } },
-      "400": { description: "잘못된 요청" },
-      "401": { description: "인증 필요" },
+      "400": { description: T.badRequest },
+      "401": { description: T.unauthorized },
     });
     paths[res] = {
       get: {
         tags: [tag],
-        summary: `${tag} 목록 조회`,
-        description: `${LOREM}\n\n- 페이지네이션 지원\n- 정렬: \`createdAt,desc\``,
+        summary: T.list(tag),
+        description: `${T.lorem}\n\n${T.paging}`,
         operationId: opId("getList"),
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", default: 0 } },
@@ -103,7 +208,7 @@ function buildGroupSpec(d: (typeof DOMAINS)[number], baseIndex: number) {
       },
       post: {
         tags: [tag],
-        summary: `${tag} 등록`,
+        summary: T.create(tag),
         operationId: opId("create"),
         requestBody: {
           required: true,
@@ -111,21 +216,21 @@ function buildGroupSpec(d: (typeof DOMAINS)[number], baseIndex: number) {
             "application/json": { schema: { $ref: `#/components/schemas/${d.entity}${i}CreateRequest` } },
           },
         },
-        responses: ok(dto, "등록됨"),
+        responses: ok(dto, T.created),
       },
     };
     paths[`${res}/{id}`] = {
       parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", format: "int64" } }],
       get: {
         tags: [tag],
-        summary: `${tag} 상세 조회`,
-        description: LOREM,
+        summary: T.get(tag),
+        description: T.lorem,
         operationId: opId("getOne"),
         responses: ok(dto),
       },
       put: {
         tags: [tag],
-        summary: `${tag} 수정`,
+        summary: T.update(tag),
         operationId: opId("update"),
         requestBody: {
           content: {
@@ -136,15 +241,15 @@ function buildGroupSpec(d: (typeof DOMAINS)[number], baseIndex: number) {
       },
       delete: {
         tags: [tag],
-        summary: `${tag} 삭제`,
+        summary: T.remove(tag),
         operationId: opId("remove"),
-        responses: { "204": { description: "삭제됨" } },
+        responses: { "204": { description: T.deleted } },
       },
     };
     paths[`${res}/{id}/items`] = {
       get: {
         tags: [tag],
-        summary: `${tag} 하위 항목`,
+        summary: T.items(tag),
         operationId: opId("getItems"),
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
         responses: ok(`#/components/schemas/${d.entity}${i}Item`),
@@ -154,9 +259,9 @@ function buildGroupSpec(d: (typeof DOMAINS)[number], baseIndex: number) {
   return {
     openapi: "3.0.1",
     info: {
-      title: `Sample ${d.group} API`,
+      title: T === TEXT.en ? `${d.title} API` : `Sample ${d.group} API`,
       version: "v1",
-      description: `# ${d.group} 서비스\n\n${LOREM}\n\n## 인증\n\nBearer 토큰을 \`Authorization\` 헤더에 넣으세요.\n\n${"| 코드 | 의미 |\n|---|---|\n| E001 | 잘못된 입력 |\n| E002 | 권한 없음 |\n"}`,
+      description: `# ${T.service(d.title)}\n\n${T.lorem}\n\n## ${T.auth}\n\n${T.authText}\n\n${T.codes}`,
     },
     servers: [{ url: "/", description: "Generated server url" }],
     tags: d.tags.map((name) => ({ name, description: `${name} API` })),
@@ -169,11 +274,13 @@ function buildGroupSpec(d: (typeof DOMAINS)[number], baseIndex: number) {
   };
 }
 
-export function buildSampleSpecs() {
+export function buildSampleSpecs(lang: SampleLang = "en") {
+  const T: Text = TEXT[lang];
+  const DOMAINS = T.domains;
   const groups: Record<string, any> = {};
   let idx = 0;
   for (const d of DOMAINS) {
-    groups[d.group] = buildGroupSpec(d, idx);
+    groups[d.group] = buildGroupSpec(T, d, idx);
     idx += d.tags.length;
   }
   const all = {
@@ -194,9 +301,11 @@ const UI_HTML = `<!DOCTYPE html><html><head><title>Swagger UI</title></head>
 
 export function startSampleGateway(
   port = 0,
-  host = "127.0.0.1"
+  host = "127.0.0.1",
+  lang: SampleLang = "en"
 ): Promise<{ origin: string; close(): Promise<void> }> {
-  const { groups, all } = buildSampleSpecs();
+  const T: Text = TEXT[lang];
+  const { groups, all } = buildSampleSpecs(lang);
   const routes: Record<string, () => { type: string; body: string }> = {
     "/swagger-ui/index.html": () => ({ type: "text/html; charset=utf-8", body: UI_HTML }),
     "/v3/api-docs": () => ({ type: "application/json", body: JSON.stringify(all) }),
@@ -224,11 +333,11 @@ export function startSampleGateway(
       }
       const one = (id: number) => ({
         id,
-        name: ["홍길동", "김민지", "이서준"][id % 3],
+        name: T.names[id % 3],
         status: "ACTIVE",
         createdAt: new Date(Date.UTC(2026, 10, 1 + id, 9)).toISOString(),
-        detail: { memo: null, tags: ["beginner"], meta: { cohort: "2026-11" } },
-        items: [{ seq: 1, title: "OT", score: 92.5 }],
+        detail: { memo: null, tags: T.item.tags, meta: { cohort: T.item.cohort } },
+        items: [{ seq: 1, title: T.item.title, score: 92.5 }],
       });
       const idMatch = /\/(\d+)(?:\/|$)/.exec(pathOnly);
       const data = idMatch ? one(Number(idMatch[1])) : [one(1), one(2), one(3)];
@@ -253,7 +362,11 @@ export function startSampleGateway(
 }
 
 if (require.main === module) {
-  startSampleGateway(Number(process.env.PORT) || 8089).then(({ origin }) => {
+  startSampleGateway(
+    Number(process.env.PORT) || 8089,
+    "127.0.0.1",
+    process.env.LANG_SAMPLE === "ko" ? "ko" : "en"
+  ).then(({ origin }) => {
     console.log(`Sample gateway: ${origin}/swagger-ui/index.html`);
     console.log(
       `Register in settings: "swaggerViewer.specs": [{ "name": "sample", "url": "${origin}/swagger-ui/index.html" }]`

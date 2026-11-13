@@ -32,7 +32,7 @@ async function webviewState(win: Page) {
 }
 
 (async () => {
-  const gw = await startSampleGateway();
+  const gw = await startSampleGateway(0, "127.0.0.1", "ko"); // Korean tags: names with spaces
   const s = await launchVSCode({
     "swaggerViewer.specs": [{ name: "sample", url: `${gw.origin}/swagger-ui/index.html` }],
   });

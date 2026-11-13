@@ -121,13 +121,13 @@ async function scene(theme: keyof typeof THEMES, gatewayOrigin: string, withGif:
   try {
     await tidy(s);
     await s.showOpenApiView();
-    for (const label of ["Sample Gateway", "learning", "학습자 관리"]) {
+    for (const label of ["Sample Gateway", "store", "Products"]) {
       await s.row(label).click();
       await sleep(1500);
     }
 
     const tour = async () => {
-      await s.row("GET /api/v1/learning/r0/{id}").click();
+      await s.row("GET /api/v1/products/{id}").click();
       const ui = await frameWith(s.win, "#swagger-ui .opblock.is-open");
       await sleep(1500);
       const op = ui.locator(".opblock.is-open").first();
