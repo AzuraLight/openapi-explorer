@@ -243,9 +243,17 @@ function cacheAndReturn(
   return { specUrl, spec, cached: false, tried, groups };
 }
 
-export function clearCache(): void {
-  SPEC_CACHE.clear();
-  URL_RESOLVE_CACHE.clear();
+// Without a URL: everything. With one: that input URL and the spec it resolved to.
+export function clearCache(url?: string): void {
+  if (url === undefined) {
+    SPEC_CACHE.clear();
+    URL_RESOLVE_CACHE.clear();
+    return;
+  }
+  const r = URL_RESOLVE_CACHE.get(url);
+  URL_RESOLVE_CACHE.delete(url);
+  SPEC_CACHE.delete(url);
+  if (r) SPEC_CACHE.delete(r.specUrl);
 }
 
 export function resolveRef(spec: OpenApiSpec, ref: string): unknown {

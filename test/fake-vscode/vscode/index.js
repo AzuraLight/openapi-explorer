@@ -107,7 +107,7 @@ async function resolveView(id) {
   return view;
 }
 
-function createWebviewPanel(viewType, title) {
+function createWebviewPanel(viewType, title, _showOptions, options) {
   let onMsg = null;
   const disposeListeners = [];
   const webview = {
@@ -129,6 +129,7 @@ function createWebviewPanel(viewType, title) {
   const p = {
     viewType,
     title,
+    options: options || {},
     disposed: false,
     webview,
     reveal() {},
