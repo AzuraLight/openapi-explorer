@@ -98,7 +98,7 @@ test("after the panel is hidden and shown again, the operation being viewed is o
 });
 
 test("a large spec renders a small page (collapsed start)", async ({ page }) => {
-  const paths: Record<string, unknown> = {};
+  const paths: Record<string, Record<string, any>> = {};
   for (let i = 0; i < 2000; i++)
     paths[`/r${i}`] = { get: { tags: [`tag${i % 100}`], responses: { "200": { description: "ok" } } } };
   await openInPage(page, renderWebview({ ...spec, paths }, "http://127.0.0.1:1/v3/api-docs"));
