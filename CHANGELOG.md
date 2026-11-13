@@ -4,6 +4,48 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-11-13
+
+### Fixed
+
+- **Try it out kept an old token.** After a token was changed or removed, the open Swagger UI panel still sent
+  the old one. Credentials are no longer written into the page; the extension adds the current ones to each
+  request.
+- **A token could reach another host during discovery.** When a docs page or swagger-config pointed at a spec on
+  another host, that host received the token saved for the first one. Each request now carries only its own
+  host's credential.
+- **`caCertPath` replaced the trusted CAs.** Setting a private CA made every other HTTPS gateway fail. The CA is
+  now added to Node's trusted certificates, and a missing file is reported instead of being ignored.
+- **`NO_PROXY` was ignored** for the `HTTP_PROXY`/`HTTPS_PROXY` environment proxy.
+- **Redirects after POST** (303, and 301/302) repeated the POST with its body; they now continue as GET.
+- **Operations without tags** did not open in Swagger UI when clicked in the tree.
+- **Code generation** (checked against openapi-typescript 7.13.0, and the generated code compiles with
+  `tsc --noEmit`): non-identifier property names are quoted; `nullable` and 3.1 type arrays give `| null`;
+  `unknown` instead of `any`; `additionalProperties` become index signatures; top-level enum/allOf/array
+  models are type aliases instead of empty interfaces; path variables like `{user-id}` are substituted and
+  names are valid identifiers; header parameters are arguments; unset query parameters are left out; request
+  bodies use TS types; `void` responses (e.g. 204) no longer call `res.json()`; multipart and form bodies use
+  `FormData` / `URLSearchParams` (cURL: `-F` / `--data-urlencode`).
+- README: the authentication steps and the code generation wording now match what the extension does.
+
+### Performance
+
+- Copying TypeScript/fetch/axios for specs with thousands of linked models no longer fails with a stack
+  overflow (each model is emitted once); a generation error is shown instead of failing silently.
+- Expanding many tags of a large spec no longer slows down quadratically (20,000 endpoints / 1,000 tags:
+  about 15 s → under 1.5 s in tests).
+- springdoc: the primary group's spec is fetched once instead of twice.
+- HTTPS connections are reused (keep-alive) and the CA file is read once.
+- Saving or removing one API reloads only that API (and APIs sharing its host's credentials), not all of them.
+- The Swagger UI panel starts with tags collapsed and releases its page while hidden, restoring the operation
+  being viewed when shown again. 10,000 endpoints: first render about 6.1 s → 0.8 s, page memory 593 MB →
+  164 MB in tests.
+
+### Changed
+
+- The Swagger UI panel opens with every tag collapsed; selecting an operation or model in the tree opens it.
+- Generated TypeScript follows openapi-typescript's output (see Fixed), so its shape differs from 1.2.0.
+
 ## [1.2.0] - 2026-11-11
 
 ### Added
@@ -115,6 +157,7 @@ First public release.
 - Response bodies are capped (25 MB) to prevent memory pressure from huge responses.
 - Webview CSP narrowed (`img-src` no longer allows arbitrary `https:`).
 
+[1.2.1]: https://github.com/AzuraLight/openapi-explorer/releases/tag/v1.2.1
 [1.2.0]: https://github.com/AzuraLight/openapi-explorer/releases/tag/v1.2.0
 [1.1.1]: https://github.com/AzuraLight/openapi-explorer/releases/tag/v1.1.1
 [1.0.0]: https://github.com/AzuraLight/openapi-explorer/releases/tag/v1.0.0
