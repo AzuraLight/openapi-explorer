@@ -39,7 +39,11 @@ tree plus an embedded Swagger UI — no more opening the docs page in Chrome.
   (`/api-docs-json`, `/v3/api-docs`, …) is discovered automatically. springdoc groups
   (`/v3/api-docs/swagger-config`) appear as one node per group.
 - **JSON, OpenAPI 3.x and Swagger 2.0** — including path-level parameters, Swagger 2
-  `body`/`formData` parameters, and relative `servers` URLs.
+  `body`/`formData` parameters, and relative `servers` URLs. YAML specs are not read (since 1.3.0); use the
+  spec's JSON URL (springdoc `/v3/api-docs`, NestJS `/{path}-json`).
+- **Local spec files** — right-click a JSON file named like `openapi.json` / `swagger.json` / `api-docs.json`
+  in the Explorer → **Add to OpenAPI Explorer**, or enter a `file://` URL in the API settings. Saving the
+  file updates the tree and the open Swagger UI.
 - **Corporate environments** — proxy, private CA certificate, `strictSSL` toggle, and an
   auth token stored in SecretStorage plus custom headers.
 

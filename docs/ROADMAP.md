@@ -69,13 +69,14 @@ API management as shipped: ＋ / right-click **Add API…** adds a New API node 
 
 Done when: E1–E4 and E12–E14 tests pass.
 
-### 1.3.0 — Local spec files and external `$ref`
+### 1.3.0 — Local spec files, YAML dropped
 
-- Read `file://` specs (JSON / YAML) and reload when the file changes.
-- Explorer right-click on a spec file → **Add to OpenAPI Explorer** (`explorer/context`, filtered with `resourceFilename =~ /(openapi|swagger|api-docs)/` — https://code.visualstudio.com/api/references/when-clause-contexts).
-- External `$ref` (specs split across files or URLs), for local and remote specs. The approach (own bundler vs a library) is decided from research before work starts.
+- Drop YAML support (added in 1.2.0): specs are read as JSON only. Remove the `yaml` dependency and the springdoc `.yaml` / NestJS `-yaml` discovery paths.
+- Read `file://` specs (JSON) and reload when the file changes.
+- Explorer right-click on a spec file → **Add to OpenAPI Explorer** (`explorer/context`, filtered with `resourceExtname == .json` and `resourceFilename =~ /(openapi|swagger|api-docs)/i` — https://code.visualstudio.com/api/references/when-clause-contexts).
+- A local file is read only when the API is that file; a remote docs page or swagger-config pointing at `file://` is not followed.
 
-Done when: a split multi-file spec opens from the Explorer and from a URL, and edits to any of its files show up.
+Done when: a local JSON spec opens from the Explorer and from the API settings, and edits to the file show up in the tree and the open Swagger UI.
 
 ### 1.4.0 — Code generation
 
@@ -132,6 +133,8 @@ apiKey / OAuth2 / mutualTLS auth UI; springdoc custom `configUrl` (set in `swagg
 | 2026-11-13 | External `$ref` is in scope for 1.3.0                                                                                                                         | Maintainer decision; split specs are common once local files are supported                                                                                                                                                                                                                             |
 | 2026-11-13 | VS Code Marketplace publishing later; Open VSX only for now                                                                                                   | Maintainer decision                                                                                                                                                                                                                                                                                    |
 | 2026-11-13 | README images recorded against an English sample gateway                                                                                                      | Maintainer decision; the README is read in English first                                                                                                                                                                                                                                               |
+| 2026-11-13 | Drop YAML support in 1.3.0; specs are JSON only | Maintainer decision. Measured: `yaml` 2.9.1 slows down quadratically with the number of keys in one mapping, so a ~2.4 MB document (200,000 keys) stalls the extension host for minutes (40,000 keys: 11.6 s; JSON: 12 ms). Bundle 79 KB → 192 KB (1.2.1 code without / with `yaml`). springdoc and NestJS also serve JSON by default; FastAPI and Swashbuckle serve JSON only |
+| 2026-11-13 | Drop external `$ref` from 1.3.0 | Maintainer decision. Attack paths reproduced in the review and edge-case tests of the discarded 1.3.0 draft: a local `$ref` leaking any file, a remote spec making requests with another registered host's credentials, requests to internal addresses |
 
 ## Sources
 

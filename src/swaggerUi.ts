@@ -14,9 +14,15 @@ export type FocusTarget =
 
 let panel: vscode.WebviewPanel | null = null;
 let currentSpecUrl = ""; // spec the current panel is showing (re-render if different)
+let currentSpec: OpenApiSpec | null = null; // its loaded object — a reload (Refresh, file change) gives a new one
 let currentBase = ""; // that spec's origin — credentials are only sent to this origin
 // The panel is reused, so keep the latest options (token/proxy/CA) in the module for the message handler to read.
 let currentHttpOptions: HttpOptions = {};
+
+// URL of the spec the open panel shows ("" when closed).
+export function shownSpecUrl(): string {
+  return panel ? currentSpecUrl : "";
+}
 
 export function openSwaggerUi(
   context: vscode.ExtensionContext,
@@ -44,6 +50,7 @@ export function openSwaggerUi(
     panel.onDidDispose(() => {
       panel = null;
       currentSpecUrl = "";
+      currentSpec = null;
       currentBase = "";
     });
     panel.webview.onDidReceiveMessage((msg) => handleMessage(msg));
@@ -54,7 +61,7 @@ export function openSwaggerUi(
 
   // Same spec: don't redraw, just move focus (preserve state). Different spec — even on the
   // same origin, e.g. two services behind one gateway — re-render.
-  if (isNew || baseUrl !== currentSpecUrl) {
+  if (isNew || baseUrl !== currentSpecUrl || spec !== currentSpec) {
     const asset = (f: string) => webview.asWebviewUri(vscode.Uri.joinPath(mediaRoot, f)).toString();
     const nonce = makeNonce();
     const csp =
@@ -65,6 +72,7 @@ export function openSwaggerUi(
       `font-src ${webview.cspSource};`;
     webview.html = render(asset, csp, nonce, specWithServers, focus);
     currentSpecUrl = baseUrl;
+    currentSpec = spec;
     currentBase = base;
   } else if (focus) {
     webview.postMessage({ type: "focus", focus });
@@ -125,6 +133,8 @@ function ensureServers(spec: OpenApiSpec, baseUrl: string): OpenApiSpec {
   } catch {
     return spec;
   }
+  // A local file has no server to point at: keep the spec's own servers as written.
+  if (u.protocol === "file:") return spec;
   if (spec.swagger) {
     if ((spec as any).host) return spec;
     return { ...spec, host: u.host, schemes: [u.protocol.replace(":", "")] } as OpenApiSpec;
