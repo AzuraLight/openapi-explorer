@@ -16,64 +16,28 @@ const fetcherOf =
     return { ok: status < 300, status, contentType: r.type ?? "application/json", body: r.body };
   };
 
-// ---------------- E1: YAML ----------------
+// ---------------- YAML is not read ----------------
 
-const YAML_SPEC = `openapi: 3.0.3
-info: { title: Yaml API, version: "1" }
-x-common: &okResponse
-  description: ok
-paths:
-  /pets:
-    get:
-      tags: [pets]
-      responses:
-        "200": *okResponse
-`;
-
-test("E1: a YAML spec (with anchors/aliases) is parsed", async () => {
+test("a YAML spec is not read (JSON only)", async () => {
   clearCache();
-  const r = await resolveSpec("https://y.example.com/openapi.yaml", {
-    fetcher: fetcherOf({
-      "https://y.example.com/openapi.yaml": { type: "application/yaml", body: YAML_SPEC },
-    }),
-  });
-  assert.equal(r.spec.info?.title, "Yaml API");
-  assert.equal(listEndpoints(r.spec).length, 1);
-  assert.equal((r.spec.paths!["/pets"].get.responses as any)["200"].description, "ok");
-});
-
-test("E1: YAML served as text/plain or without a content type is still parsed", async () => {
-  clearCache();
-  const r = await resolveSpec("https://y.example.com/api-yaml", {
-    fetcher: fetcherOf({ "https://y.example.com/api-yaml": { type: "text/plain", body: YAML_SPEC } }),
-  });
-  assert.equal(r.spec.info?.title, "Yaml API");
-});
-
-test("E1: alias bombs are rejected instead of expanding (yaml maxAliasCount)", async () => {
-  clearCache();
-  const bomb =
-    "openapi: 3.0.0\npaths: {}\na: &a [x, x, x, x, x, x, x, x, x, x]\n" +
-    Array.from({ length: 9 }, (_, i) => {
-      const prev = i === 0 ? "a" : `l${i - 1}`;
-      return `l${i}: &l${i} [*${prev}, *${prev}, *${prev}, *${prev}, *${prev}, *${prev}, *${prev}, *${prev}, *${prev}, *${prev}]`;
-    }).join("\n");
   await assert.rejects(
-    resolveSpec("https://y.example.com/bomb.yaml", {
-      fetcher: fetcherOf({ "https://y.example.com/bomb.yaml": { type: "application/yaml", body: bomb } }),
+    resolveSpec("https://y.example.com/openapi.yaml", {
+      fetcher: fetcherOf({
+        "https://y.example.com/openapi.yaml": {
+          type: "application/yaml",
+          body: "openapi: 3.0.3\npaths: {}\n",
+        },
+      }),
     }),
-    /alias/i
+    /YAML specs are not supported/
   );
 });
 
-test("E1: candidate URLs include framework YAML paths (springdoc .yaml, NestJS -yaml)", () => {
-  const c = candidateUrls("https://gw.example.com/api");
-  assert.ok(c.includes("https://gw.example.com/api-yaml"), "NestJS /{path}-yaml");
-  assert.ok(c.includes("https://gw.example.com/v3/api-docs.yaml"), "springdoc /v3/api-docs.yaml");
-  assert.ok(c.includes("https://gw.example.com/openapi.yaml"));
+test("candidate URLs contain no YAML paths", () => {
+  assert.equal(candidateUrls("https://gw.example.com/api").filter((c) => /yaml/i.test(c)).length, 0);
 });
 
-test("an HTML page that is not a spec is not mistaken for YAML", async () => {
+test("an HTML page that is not a spec is not mistaken for a spec", async () => {
   clearCache();
   await assert.rejects(
     resolveSpec("https://h.example.com/", {
@@ -367,4 +331,78 @@ test("Login required message points to the API settings (not a removed command)"
     }),
     (e: Error) => /API Settings/.test(e.message) && !/Set Username & Password/.test(e.message)
   );
+});
+
+// ---------------- 1.3.0: YAML is rejected with a clear message ----------------
+
+const YAML = "openapi: 3.0.3\ninfo: {title: Y, version: '1'}\npaths: {}\n";
+const JSONSPEC = (t: string) =>
+  JSON.stringify({ openapi: "3.0.0", info: { title: t, version: "1" }, paths: {} });
+
+test("a YAML spec URL fails with a message naming YAML — it does not fall back to another spec on the host", async () => {
+  clearCache();
+  await assert.rejects(
+    resolveSpec("https://a.example.com/openapi.yaml", {
+      fetcher: fetcherOf({
+        "https://a.example.com/openapi.yaml": { type: "application/yaml", body: YAML },
+        "https://a.example.com/v3/api-docs": { body: JSONSPEC("Other") },
+      }),
+    }),
+    /YAML.*not supported.*https:\/\/a\.example\.com\/openapi\.yaml/s
+  );
+});
+
+test("YAML is recognized without a yaml content type (text/plain body starting with openapi:)", async () => {
+  clearCache();
+  await assert.rejects(
+    resolveSpec("https://a.example.com/spec", {
+      fetcher: fetcherOf({ "https://a.example.com/spec": { type: "text/plain", body: YAML } }),
+    }),
+    /YAML/
+  );
+});
+
+test("a Swagger UI page whose spec is YAML fails with the YAML message", async () => {
+  clearCache();
+  await assert.rejects(
+    resolveSpec("https://a.example.com/docs", {
+      fetcher: fetcherOf({
+        "https://a.example.com/docs": {
+          type: "text/html",
+          body: '<div id="swagger-ui"></div><script>SwaggerUIBundle({url:"/openapi.yaml"})</script>',
+        },
+        "https://a.example.com/openapi.yaml": { type: "application/yaml", body: YAML },
+      }),
+    }),
+    /YAML.*openapi\.yaml/s
+  );
+});
+
+test("springdoc: a YAML primary group does not hide the JSON groups", async () => {
+  clearCache();
+  const r = await resolveSpec("https://g.example.com/swagger-ui/index.html", {
+    fetcher: fetcherOf({
+      "https://g.example.com/swagger-ui/index.html": { type: "text/html", body: "<html></html>" },
+      "https://g.example.com/v3/api-docs/swagger-config": {
+        body: JSON.stringify({
+          urls: [
+            { name: "a", url: "/a.yaml" },
+            { name: "b", url: "/b" },
+          ],
+        }),
+      },
+      "https://g.example.com/a.yaml": { type: "application/yaml", body: YAML },
+      "https://g.example.com/b": { body: JSONSPEC("B") },
+    }),
+  });
+  assert.equal(r.spec.info?.title, "B");
+  assert.deepEqual(
+    r.groups?.map((g) => g.name),
+    ["a", "b"]
+  );
+});
+
+test("no candidate URLs are derived from a .yaml path (no openapi.yaml-json / openapi.yaml.json)", () => {
+  const c = candidateUrls("https://h.example.com/docs/openapi.yaml");
+  assert.equal(c.filter((x) => /\.ya?ml(-json|\.json|\/swagger\.json)$/.test(x)).length, 0);
 });

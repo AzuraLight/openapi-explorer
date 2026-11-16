@@ -5,6 +5,7 @@
   "welcome": "아직 추가된 API가 없습니다.\n[API 추가](command:swaggerViewer.addApi)\n스펙 주소나 Swagger UI 페이지 주소(예: .../api-docs)를 추가할 수 있습니다.",
   "cmd.refresh": "새로고침",
   "cmd.addApi": "API 추가...",
+  "cmd.addSpecFile": "OpenAPI Explorer에 추가",
   "cmd.apiSettings": "API 설정...",
   "cmd.renameApi": "이름 변경",
   "cmd.copyApiUrl": "주소 복사",

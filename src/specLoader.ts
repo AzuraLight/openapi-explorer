@@ -1,8 +1,8 @@
 // Swagger/OpenAPI spec loader
-// Even given a UI page (HTML) URL, it auto-discovers the actual spec (JSON or YAML),
+// Even given a UI page (HTML) URL, it auto-discovers the actual spec (JSON),
 // including springdoc's grouped specs (swagger-config `urls`).
 // Takes an injected fetcher to decouple from vscode/network → unit testable.
-import { parse as parseYaml } from "yaml";
+import { isFileUrl } from "./fileFetcher";
 import type { Fetcher, OpenApiSpec, Schema } from "./types";
 
 export interface SpecGroup {
@@ -14,36 +14,41 @@ const SPEC_CACHE = new Map<string, { spec: OpenApiSpec; fetchedAt: number }>();
 const URL_RESOLVE_CACHE = new Map<string, { specUrl: string; groups?: SpecGroup[] }>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-// yaml's own default; stated explicitly because it is our guard against alias-expansion
-// ("billion laughs") attacks — https://eemeli.org/yaml/#parse-options
-const YAML_MAX_ALIAS_COUNT = 100;
-
 const isPetstore = (u: string): boolean => /petstore\.swagger\.io/.test(u);
 const looksLikeSpec = (obj: any): boolean =>
   !!obj && typeof obj === "object" && !Array.isArray(obj) && !!(obj.openapi || obj.swagger || obj.paths);
 
-// JSON first; otherwise YAML (any content type — servers often send YAML as text/plain).
-// HTML is never parsed as YAML. A YAML alias-limit violation is rethrown, not treated as "not a spec".
+// JSON only (any content type).
 export function tryParse(body: string): OpenApiSpec | null {
   // trimStart also drops a UTF-8 BOM (U+FEFF), which JSON.parse would otherwise reject.
   const trimmed = body.trimStart();
-  if (!trimmed || trimmed.startsWith("<")) return null;
-  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-    try {
-      const obj = JSON.parse(trimmed);
-      return looksLikeSpec(obj) ? (obj as OpenApiSpec) : null;
-    } catch {
-      /* not JSON — may still be YAML flow style */
-    }
-  }
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
   try {
-    const obj = parseYaml(trimmed, { maxAliasCount: YAML_MAX_ALIAS_COUNT });
+    const obj = JSON.parse(trimmed);
     return looksLikeSpec(obj) ? (obj as OpenApiSpec) : null;
-  } catch (e: any) {
-    if (/alias/i.test(e?.message ?? "")) throw new Error(`Spec rejected: ${e.message}`);
+  } catch {
     return null;
   }
 }
+
+// YAML specs are not read (dropped in 1.3.0: the YAML parser could stall the extension on crafted
+// input). A YAML response is recognized so the error can say so instead of "not found".
+function isYamlResponse(url: string, r: { contentType: string; body: string }): boolean {
+  if (/yaml/i.test(r.contentType)) return true;
+  if (/\.ya?ml$/i.test(urlPath(url))) return true;
+  return /^(---\s*\n)?\s*(openapi|swagger)\s*:/.test(r.body.trimStart());
+}
+const urlPath = (u: string) => {
+  try {
+    return new URL(u).pathname;
+  } catch {
+    return u;
+  }
+};
+const yamlError = (url: string, tried: string[]) =>
+  new Error(
+    `YAML specs are not supported (since 1.3.0). Use the spec's JSON URL instead — e.g. springdoc /v3/api-docs, NestJS /{path}-json: ${url}\nTried: ${tried.join(", ")}`
+  );
 
 export function candidateUrls(inputUrl: string): string[] {
   const cands = [inputUrl];
@@ -55,26 +60,16 @@ export function candidateUrls(inputUrl: string): string[] {
   }
   const path = u.pathname.replace(/\/$/, "");
   const origin = u.origin;
-  if (path) {
-    // NestJS serves /{path}-json and /{path}-yaml — https://docs.nestjs.com/openapi/introduction
-    cands.push(
-      `${origin}${path}-json`,
-      `${origin}${path}.json`,
-      `${origin}${path}/swagger.json`,
-      `${origin}${path}-yaml`,
-      `${origin}${path}.yaml`
-    );
+  if (path && !/\.ya?ml$/i.test(path)) {
+    // NestJS serves /{path}-json — https://docs.nestjs.com/openapi/introduction
+    cands.push(`${origin}${path}-json`, `${origin}${path}.json`, `${origin}${path}/swagger.json`);
   }
   cands.push(
     `${origin}/v3/api-docs`,
     `${origin}/v2/api-docs`,
     `${origin}/swagger.json`,
     `${origin}/openapi.json`,
-    `${origin}/api-docs-json`,
-    // springdoc also serves YAML at /v3/api-docs.yaml — https://springdoc.org/
-    `${origin}/v3/api-docs.yaml`,
-    `${origin}/openapi.yaml`,
-    `${origin}/swagger.yaml`
+    `${origin}/api-docs-json`
   );
   return [...new Set(cands)].filter((c) => !isPetstore(c));
 }
@@ -167,6 +162,25 @@ export async function resolveSpec(inputUrl: string, opts: ResolveOptions): Promi
     }
   }
 
+  // A local file is the spec itself: no UI-page or well-known-path discovery.
+  if (isFileUrl(inputUrl)) {
+    const r = await fetcher(inputUrl);
+    const tried1 = [`${inputUrl} → ${r.status}`];
+    if (!r.ok) {
+      const why =
+        r.status === 404
+          ? "not found"
+          : r.status === 403
+            ? "permission denied"
+            : r.body || `error ${r.status}`;
+      throw new Error(`Cannot read ${inputUrl} (${why}).`);
+    }
+    const parsed = tryParse(r.body);
+    if (parsed) return cacheAndReturn(inputUrl, inputUrl, parsed, tried1);
+    if (isYamlResponse(inputUrl, r)) throw yamlError(inputUrl, tried1);
+    throw new Error(`Not an OpenAPI/Swagger JSON document: ${inputUrl}`);
+  }
+
   const tried: string[] = [];
   let authStatus = 0; // detect 401/403 → signals login required
   const noteAuth = (s: number) => {
@@ -186,14 +200,19 @@ export async function resolveSpec(inputUrl: string, opts: ResolveOptions): Promi
   if (first.ok) {
     const parsed = tryParse(first.body);
     if (parsed) return cacheAndReturn(inputUrl, inputUrl, parsed, tried);
+    // The URL is a YAML spec: say so — never fall back to some other spec on the host.
+    if (isYamlResponse(inputUrl, first)) throw yamlError(inputUrl, tried);
     // 2) A Swagger UI page that names its spec URL inline.
     if (/text\/html/.test(first.contentType) || first.body.includes("swagger-ui")) {
+      let yamlUrl = "";
       for (const su of extractSpecUrlFromHtml(first.body, inputUrl)) {
         const r = await fetcher(su);
         tried.push(`${su} → ${r.status}`);
         const p = r.ok ? tryParse(r.body) : null;
         if (p) return cacheAndReturn(inputUrl, su, p, tried);
+        if (r.ok && !yamlUrl && isYamlResponse(su, r)) yamlUrl = su;
       }
+      if (yamlUrl) throw yamlError(yamlUrl, tried);
     }
   }
 
@@ -206,11 +225,22 @@ export async function resolveSpec(inputUrl: string, opts: ResolveOptions): Promi
     noteAuth(r.status);
     const cfg = r.ok ? readSwaggerConfig(r.body, cfgUrl) : null;
     if (cfg?.primary) {
-      const s = await fetcher(cfg.primary);
-      tried.push(`${cfg.primary} → ${s.status}`);
-      noteAuth(s.status);
-      const p = s.ok ? tryParse(s.body) : null;
-      if (p) return cacheAndReturn(inputUrl, cfg.primary, p, tried, cfg.groups);
+      // The primary group first; if it is YAML, the next JSON group stands in so the others stay usable.
+      const order = [cfg.primary, ...(cfg.groups || []).map((g) => g.url).filter((u) => u !== cfg.primary)];
+      let yamlUrl = "";
+      for (const url of order) {
+        const s = await fetcher(url);
+        tried.push(`${url} → ${s.status}`);
+        noteAuth(s.status);
+        const p = s.ok ? tryParse(s.body) : null;
+        if (p) return cacheAndReturn(inputUrl, url, p, tried, cfg.groups);
+        if (s.ok && isYamlResponse(url, s)) {
+          if (!yamlUrl) yamlUrl = url;
+          continue;
+        }
+        break; // not YAML: the primary simply failed — fall through to the well-known paths
+      }
+      if (yamlUrl) throw yamlError(yamlUrl, tried);
     }
   }
 

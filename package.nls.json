@@ -5,6 +5,7 @@
   "welcome": "You have not added any APIs yet.\n[Add API](command:swaggerViewer.addApi)\nYou can add a spec URL or a Swagger UI page address (e.g. .../api-docs).",
   "cmd.refresh": "Refresh",
   "cmd.addApi": "Add API...",
+  "cmd.addSpecFile": "Add to OpenAPI Explorer",
   "cmd.apiSettings": "API Settings...",
   "cmd.renameApi": "Rename",
   "cmd.copyApiUrl": "Copy URL",

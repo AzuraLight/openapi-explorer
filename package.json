@@ -3,7 +3,7 @@
   "displayName": "%displayName%",
   "description": "%description%",
   "l10n": "./l10n",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "publisher": "AzuraLight",
   "author": "AzuraLight <azuralight09@gmail.com>",
   "license": "MIT",
@@ -69,6 +69,7 @@
     ],
     "commands": [
       { "command": "swaggerViewer.addApi", "title": "%cmd.addApi%", "category": "OpenAPI", "icon": "$(add)" },
+      { "command": "swaggerViewer.addSpecFile", "title": "%cmd.addSpecFile%", "category": "OpenAPI" },
       { "command": "swaggerViewer.apiSettings", "title": "%cmd.apiSettings%", "category": "OpenAPI", "icon": "$(gear)" },
       { "command": "swaggerViewer.openApiSettings", "title": "%cmd.apiSettings%", "category": "OpenAPI" },
       { "command": "swaggerViewer.renameApi", "title": "%cmd.renameApi%", "category": "OpenAPI" },
@@ -125,7 +126,15 @@
         { "command": "swaggerViewer.copyCurl", "when": "view == swaggerExplorer && viewItem == endpoint", "group": "1_copy@4" },
         { "command": "swaggerViewer.copyTs", "when": "view == swaggerExplorer && viewItem == model", "group": "1_copy@1" }
       ],
+      "explorer/context": [
+        {
+          "command": "swaggerViewer.addSpecFile",
+          "when": "resourceExtname == .json && resourceFilename =~ /(openapi|swagger|api-docs)/i",
+          "group": "7_modification@9"
+        }
+      ],
       "commandPalette": [
+        { "command": "swaggerViewer.addSpecFile", "when": "false" },
         { "command": "swaggerViewer.openOperation", "when": "false" },
         { "command": "swaggerViewer.renameApi", "when": "false" },
         { "command": "swaggerViewer.openApiSettings", "when": "false" },
@@ -201,9 +210,6 @@
     "copy-assets": "node scripts/copy-swagger-ui.mjs",
     "prepare": "node scripts/copy-swagger-ui.mjs",
     "package": "vsce package --no-dependencies -o openapi-explorer-$npm_package_version.vsix"
-  },
-  "dependencies": {
-    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

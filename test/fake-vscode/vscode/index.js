@@ -25,6 +25,7 @@ const fresh = () => ({
   viewProviders: {}, // registerWebviewViewProvider
   views: {}, // resolved webview views by id
   viewPosts: [], // messages the extension posted to webview views
+  watchers: [], // workspace.createFileSystemWatcher: { pattern, fire(kind), disposed }
 });
 const rec = (global.__rec = fresh());
 
@@ -165,7 +166,31 @@ const cfgGet = (section) => ({
   },
 });
 
+class RelativePattern {
+  constructor(base, pattern) {
+    this.base = typeof base === "string" ? base : base.fsPath;
+    this.pattern = pattern;
+  }
+}
+
+// A watcher records its pattern; `fire("change" | "create" | "delete")` delivers an event.
+function createFileSystemWatcher(pattern) {
+  const ls = { change: [], create: [], delete: [] };
+  const w = {
+    pattern,
+    disposed: false,
+    fire: (kind) => ls[kind].forEach((f) => f({ fsPath: path.join(pattern.base, pattern.pattern) })),
+    onDidChange: (f) => (ls.change.push(f), { dispose() {} }),
+    onDidCreate: (f) => (ls.create.push(f), { dispose() {} }),
+    onDidDelete: (f) => (ls.delete.push(f), { dispose() {} }),
+    dispose: () => void (w.disposed = true),
+  };
+  rec.watchers.push(w);
+  return w;
+}
+
 module.exports = {
+  RelativePattern,
   __rec: rec,
   __reset,
   __resolveView: resolveView,
@@ -230,6 +255,7 @@ module.exports = {
   },
   workspace: {
     getConfiguration: cfgGet,
+    createFileSystemWatcher,
     onDidChangeConfiguration: () => ({ dispose() {} }),
     workspaceFolders: undefined,
   },
