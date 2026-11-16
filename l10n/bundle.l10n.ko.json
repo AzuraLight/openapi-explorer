@@ -10,7 +10,7 @@
   "Choose hosts": "호스트 선택",
   "Auth tokens are now saved per host. Choose which host(s) your saved token belongs to — until then it is not sent.": "이제 인증 토큰은 호스트별로 저장됩니다. 저장된 토큰을 쓸 호스트를 고르세요. 고르기 전에는 토큰을 보내지 않습니다.",
   "Looking for an OpenAPI spec at {0}…": "{0}에서 OpenAPI 스펙을 찾는 중…",
-  "Enter an http(s) URL": "http(s) 주소를 입력하세요",
+  "Enter an http(s) or file:// URL": "http(s) 또는 file:// 주소를 입력하세요",
   "This API is already registered: {0}": "이미 등록된 API입니다: {0}",
   "Save Anyway": "그래도 저장",
   "No OpenAPI spec found at {0}.": "{0}에서 OpenAPI 스펙을 찾지 못했습니다.",
@@ -55,5 +55,7 @@
   "Unsaved changes to {0} were kept.": "{0}의 저장하지 않은 변경을 보관했습니다.",
   "Enter a token": "토큰을 입력하세요",
   "This API was removed from the settings meanwhile.": "그사이 설정에서 이 API가 삭제되었습니다.",
-  "These credentials are saved per host and also apply to:": "인증 정보는 호스트별로 저장되어 다음 API에도 함께 적용됩니다:"
+  "These credentials are saved per host and also apply to:": "인증 정보는 호스트별로 저장되어 다음 API에도 함께 적용됩니다:",
+  "{0} is already added.": "{0}은(는) 이미 추가되어 있습니다.",
+  "Added, but the file could not be read as an OpenAPI document: {0}": "추가했지만 OpenAPI 문서로 읽지 못했습니다: {0}"
 }

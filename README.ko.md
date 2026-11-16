@@ -34,10 +34,14 @@
 - **다중 게이트웨이를 탐색기 폴더처럼 관리** — ＋ / 우클릭 **API 추가**, **이름 변경**, **주소 수정**, **API 제거**.
   `swaggerViewer.specs`에 저장됩니다.
 - **UI URL 자동 변환** — `.../api-docs`(Swagger UI 페이지) 주소를 넣어도 실제 스펙
-  (`/api-docs-json`, `/v3/api-docs`, `-yaml` 등)을 자동 탐색. springdoc 그룹
+  (`/api-docs-json`, `/v3/api-docs` 등)을 자동 탐색. springdoc 그룹
   (`/v3/api-docs/swagger-config`)은 그룹마다 노드로 표시.
-- **JSON·YAML, OpenAPI 3.x·Swagger 2.0** — path 단위 파라미터, Swagger 2의 `body`/`formData`
-  파라미터, 상대 경로 `servers` 포함.
+- **JSON, OpenAPI 3.x·Swagger 2.0** — path 단위 파라미터, Swagger 2의 `body`/`formData`
+  파라미터, 상대 경로 `servers` 포함. YAML 스펙은 읽지 않습니다(1.3.0부터). 스펙의 JSON 주소를 쓰세요
+  (springdoc `/v3/api-docs`, NestJS `/{path}-json`).
+- **로컬 스펙 파일** — 탐색기에서 `openapi.json` / `swagger.json` / `api-docs.json` 같은 이름의 JSON 파일을
+  우클릭 → **OpenAPI Explorer에 추가**, 또는 API 설정에 `file://` 주소를 입력합니다. 파일을 저장하면 트리와
+  열린 Swagger UI가 바뀝니다.
 - **사내 환경 지원** — 프록시, 사설 CA 인증서, `strictSSL` 토글, 인증 토큰(SecretStorage)·커스텀 헤더.
 
 ## 사용법

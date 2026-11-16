@@ -69,13 +69,14 @@
 
 완료 기준: E1~E4, E12~E14 시험 통과.
 
-### 1.3.0 — 로컬 스펙 파일, 외부 `$ref`
+### 1.3.0 — 로컬 스펙 파일, YAML 폐기
 
-- `file://` 스펙(JSON / YAML)을 읽고, 파일이 바뀌면 다시 불러온다.
-- 탐색기에서 스펙 파일 우클릭 → **OpenAPI Explorer에 추가** (`explorer/context`, `resourceFilename =~ /(openapi|swagger|api-docs)/`로 거름 — https://code.visualstudio.com/api/references/when-clause-contexts).
-- 외부 `$ref`(여러 파일·URL로 나눈 스펙)를 로컬·원격 모두 지원. 직접 만들지 라이브러리를 쓸지는 시작 전에 조사로 정한다.
+- YAML 지원 폐기(1.2.0에서 추가) — 스펙은 JSON만 읽는다. `yaml` 의존성과 springdoc `.yaml`·NestJS `-yaml` 탐색 경로를 뺀다.
+- `file://` 스펙(JSON)을 읽고, 파일이 바뀌면 다시 불러온다.
+- 탐색기에서 스펙 파일 우클릭 → **OpenAPI Explorer에 추가** (`explorer/context`, `resourceExtname == .json`과 `resourceFilename =~ /(openapi|swagger|api-docs)/i`로 거름 — https://code.visualstudio.com/api/references/when-clause-contexts).
+- 로컬 파일은 API 자체가 그 파일일 때만 읽는다. 원격 문서 페이지·swagger-config가 `file://`을 가리켜도 읽지 않는다.
 
-완료 기준: 여러 파일로 나눈 스펙이 탐색기와 URL 양쪽에서 열리고, 어느 파일을 고쳐도 반영된다.
+완료 기준: 로컬 JSON 스펙이 탐색기와 API 설정 양쪽에서 열리고, 파일을 고치면 트리와 열린 Swagger UI에 반영된다.
 
 ### 1.4.0 — 코드 생성
 
@@ -132,6 +133,8 @@ apiKey·OAuth2·mutualTLS 인증 UI, springdoc 사용자 지정 `configUrl`(`swa
 | 2026-11-13 | 외부 `$ref`를 1.3.0 범위에 포함                                                                                   | 사용자 결정. 로컬 파일을 지원하면 나눈 스펙이 흔함                                                                                                                                                                                                       |
 | 2026-11-13 | VS Code Marketplace 배포는 나중에, 지금은 Open VSX만                                                              | 사용자 결정                                                                                                                                                                                                                                              |
 | 2026-11-13 | README 이미지는 영어 샘플 게이트웨이로 촬영                                                                       | 사용자 결정. README는 영어로 먼저 읽힘                                                                                                                                                                                                                   |
+| 2026-11-13 | 1.3.0에서 YAML 지원 폐기, 스펙은 JSON만                                                                    | 사용자 결정. 실측: `yaml` 2.9.1이 한 매핑의 키 개수에 대해 제곱으로 느려져 약 2.4MB 문서(키 20만 개)로 확장 호스트가 수 분 멈춤(키 4만 개 11.6초, JSON은 12ms). 번들 79KB → 192KB(1.2.1 코드에 `yaml` 포함 여부로 측정). springdoc·NestJS는 JSON도 기본 제공, FastAPI·Swashbuckle은 JSON만 |
+| 2026-11-13 | 1.3.0에서 외부 `$ref` 폐기                                                                                       | 사용자 결정. 폐기한 1.3.0 시안의 리뷰·엣지케이스 시험에서 재현된 공격 경로: 로컬 `$ref`로 임의 파일 유출, 원격 스펙이 다른 등록 호스트의 인증 정보로 요청하게 함, 사내 주소 요청 |
 
 ## 출처
 

@@ -11,7 +11,10 @@ import {
   genFetchClient,
   genAxiosClient,
 } from "./model";
-import { openSwaggerUi, type FocusTarget } from "./swaggerUi";
+import * as path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { openSwaggerUi, shownSpecUrl, type FocusTarget } from "./swaggerUi";
+import { withFiles, isFileUrl } from "./fileFetcher";
 import { createHttpFetcher, clearHttpCaches, type HttpOptions } from "./http";
 import { ApiSettingsPanels, type AuthKind, type SettingsData, type SettingsInit } from "./apiSettingsPanel";
 
@@ -182,8 +185,15 @@ const readTokenMap = (c: vscode.ExtensionContext) => readHostMap(c, SECRET_TOKEN
 const writeTokenMap = (c: vscode.ExtensionContext, m: Record<string, string>) =>
   writeHostMap(c, SECRET_TOKEN_KEY, m);
 
+// Hosts of registered remote APIs. A local file has no host: no credentials, no legacy-token move.
 function registeredHosts(): string[] {
-  return [...new Set(getSpecConfigs().map((c) => hostOf(c.url)))];
+  return [
+    ...new Set(
+      getSpecConfigs()
+        .filter((c) => !isFileUrl(c.url))
+        .map((c) => hostOf(c.url))
+    ),
+  ].filter(Boolean);
 }
 
 // ≤1.1.0 kept one global token and sent it to every host. Never spread it silently: with exactly one
@@ -243,6 +253,34 @@ async function buildHttpOptions(
   };
 }
 
+// Add an API where the list already lives; only an empty list goes to the default scope.
+async function appendSpec(entry: SpecConfig): Promise<void> {
+  const cfg = vscode.workspace.getConfiguration("swaggerViewer");
+  const i = cfg.inspect<SpecConfig[]>("specs");
+  const target =
+    i?.workspaceValue !== undefined
+      ? vscode.ConfigurationTarget.Workspace
+      : i?.globalValue !== undefined
+        ? vscode.ConfigurationTarget.Global
+        : configTarget();
+  const current =
+    (target === vscode.ConfigurationTarget.Workspace ? i?.workspaceValue : i?.globalValue) || [];
+  await cfg.update("specs", [...current, entry], target);
+}
+
+// Called after a spec is (re)loaded (set by activate: watches a local spec file).
+let onSpecLoaded = (_url: string): void => {};
+
+// A file:// URL naming a file ("file:///dir/openapi.json"), not "file:" or "file:x" or a folder.
+const isFileSpecUrl = (s: string): boolean => {
+  if (!/^file:\/\//i.test(s.trim())) return false;
+  try {
+    return !fileURLToPath(s.trim()).endsWith(path.sep);
+  } catch {
+    return false;
+  }
+};
+
 async function ensureSpec(
   context: vscode.ExtensionContext,
   url: string,
@@ -251,6 +289,7 @@ async function ensureSpec(
   if (!force && specCache.has(url)) return specCache.get(url)!;
   const res = await resolveSpec(url, { force, fetcher: specFetcher(context, url) });
   specCache.set(url, res);
+  onSpecLoaded(url);
   // springdoc groups: the primary group's spec is already here — its group node must not fetch it again.
   if (res.groups && res.groups.length > 1 && !specCache.has(res.specUrl)) {
     specCache.set(res.specUrl, { ...res, groups: undefined });
@@ -267,10 +306,11 @@ function specFetcher(
   override?: { token?: string; basic?: BasicCredential }
 ): Fetcher {
   const apiHost = hostOf(apiUrl);
-  return async (u) => {
+  // Local files are read only for an API that is itself a local file (src/fileFetcher.ts).
+  return withFiles(async (u) => {
     const own = override && hostOf(u) === apiHost ? override : undefined;
     return createHttpFetcher(await buildHttpOptions(context, u, own))(u);
-  };
+  }, isFileUrl(apiUrl));
 }
 
 // ---------------- Tree ----------------
@@ -604,6 +644,76 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     provider.refresh();
   };
+  // ---- local spec files: watch the file of each loaded file API ----
+  // A change reloads that API and redraws the Swagger UI if it shows it. One save often fires several
+  // events: they are handled once. Watching outside the workspace needs a RelativePattern with a base
+  // folder (https://code.visualstudio.com/api/references/vscode-api#workspace.createFileSystemWatcher).
+  const watchers = new Map<string, vscode.FileSystemWatcher>();
+  const changed = new Set<string>();
+  let changeTimer: ReturnType<typeof setTimeout> | undefined;
+  const reloadChanged = async () => {
+    changeTimer = undefined;
+    const urls = [...changed];
+    changed.clear();
+    forgetApis(urls);
+    const shown = shownSpecUrl();
+    if (!urls.includes(shown)) return;
+    try {
+      const res = await ensureSpec(context, shown);
+      if (shownSpecUrl() !== shown) return;
+      openSwaggerUi(
+        context,
+        res.spec,
+        res.spec.info?.title || "Swagger UI",
+        res.specUrl,
+        await buildHttpOptions(context, res.specUrl)
+      );
+    } catch (e: any) {
+      vscode.window.showErrorMessage(
+        vscode.l10n.t("Failed to open Swagger UI: {0}", e?.message ?? String(e))
+      );
+    }
+  };
+  onSpecLoaded = (url) => {
+    if (!isFileUrl(url) || watchers.has(url)) return;
+    let file: string;
+    try {
+      file = fileURLToPath(url);
+    } catch {
+      return;
+    }
+    // The pattern is a glob: a name with glob characters is watched through "*" and filtered to this file.
+    const name = path.basename(file);
+    const globby = /[[\]{}*?]/.test(name);
+    const watcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(vscode.Uri.file(path.dirname(file)), globby ? "*" : name)
+    );
+    const fire = (uri?: vscode.Uri) => {
+      if (globby && uri?.fsPath !== file) return;
+      changed.add(url);
+      if (changeTimer) clearTimeout(changeTimer);
+      changeTimer = setTimeout(() => void reloadChanged(), 150);
+    };
+    watcher.onDidChange(fire);
+    watcher.onDidCreate(fire);
+    watcher.onDidDelete(fire);
+    watchers.set(url, watcher);
+  };
+  // APIs that are gone (removed, or the list changed) release their watchers.
+  const releaseWatchers = () => {
+    const live = new Set(specEntries().map((e) => e.url));
+    for (const [url, w] of watchers) {
+      if (live.has(url)) continue;
+      w.dispose();
+      watchers.delete(url);
+    }
+  };
+  context.subscriptions.push({
+    dispose: () => {
+      if (changeTimer) clearTimeout(changeTimer);
+      watchers.forEach((w) => w.dispose());
+    },
+  });
   const apisOnHost = (host: string) =>
     specEntries()
       .filter((e) => hostOf(e.url) === host)
@@ -681,7 +791,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Form checks shared by Test Connection and Save; returns an error message or undefined.
   async function invalid(init: SettingsInit, data: SettingsData): Promise<string | undefined> {
-    if (!isHttpUrl(data.url)) return vscode.l10n.t("Enter an http(s) URL");
+    if (!isHttpUrl(data.url) && !isFileSpecUrl(data.url))
+      return vscode.l10n.t("Enter an http(s) or file:// URL");
     if (data.auth === "basic" && !data.username) return vscode.l10n.t("Enter a username");
     // Bearer with nothing to send is a mistake — unless the saved token was deliberately deleted.
     if (data.auth === "bearer" && !data.deleteToken && !wantedCreds(data, await baseCreds(init)).token) {
@@ -740,24 +851,14 @@ export function activate(context: vscode.ExtensionContext): void {
       if (original) {
         await updateEntry(original, () => ({ name, url: data.url }));
       } else {
-        // Add where the list already lives; only an empty list goes to the default scope.
-        const cfg = vscode.workspace.getConfiguration("swaggerViewer");
-        const i = cfg.inspect<SpecConfig[]>("specs");
-        const target =
-          i?.workspaceValue !== undefined
-            ? vscode.ConfigurationTarget.Workspace
-            : i?.globalValue !== undefined
-              ? vscode.ConfigurationTarget.Global
-              : configTarget();
-        const current =
-          (target === vscode.ConfigurationTarget.Workspace ? i?.workspaceValue : i?.globalValue) || [];
-        await cfg.update("specs", [...current, { name, url: data.url }], target);
+        await appendSpec({ name, url: data.url });
         pendingApis.delete(init.key);
       }
       // Credentials: written for the (new) host. Moving to another host leaves the old host's
       // credentials only if another API still uses that host.
       const host = hostOf(data.url);
-      await writeCreds(host, creds);
+      // A local file has no host to hold credentials.
+      if (!isFileUrl(data.url)) await writeCreds(host, creds);
       if (original && hostOf(original) !== host && otherApisOnHost(hostOf(original)).length === 0) {
         await writeCreds(hostOf(original), {});
       }
@@ -858,6 +959,39 @@ export function activate(context: vscode.ExtensionContext): void {
   }
 
   // Add API (like a new folder in the Explorer): a "New API" node appears and its settings tab opens.
+  // Explorer → "Add to OpenAPI Explorer": register a local JSON spec file, named by its title.
+  // The same file is not added twice (also when the stored URL spells it differently).
+  async function addSpecFile(uri?: vscode.Uri): Promise<void> {
+    if (!uri?.fsPath) return;
+    const url = pathToFileURL(uri.fsPath).href;
+    const same = (u: string) => {
+      try {
+        return isFileUrl(u) && fileURLToPath(u) === uri.fsPath;
+      } catch {
+        return false;
+      }
+    };
+    if (!specEntries().some((e) => same(e.url))) {
+      let name = path.basename(uri.fsPath);
+      try {
+        name = (await ensureSpec(context, url, true)).spec.info?.title || name;
+      } catch (e: any) {
+        vscode.window.showWarningMessage(
+          vscode.l10n.t(
+            "Added, but the file could not be read as an OpenAPI document: {0}",
+            e?.message ?? String(e)
+          )
+        );
+      }
+      await appendSpec({ name, url });
+      forgetApis([url]);
+    } else {
+      vscode.window.showInformationMessage(vscode.l10n.t("{0} is already added.", path.basename(uri.fsPath)));
+    }
+    const node = (await provider.getChildren()).find((n) => n._apiRoot && n._specUrl && same(n._specUrl));
+    if (node) await treeView.reveal(node, { select: true, focus: false, expand: true });
+  }
+
   async function addApi(): Promise<void> {
     const key = `new:${++pendingSeq}`;
     pendingApis.set(key, pendingSeq);
@@ -893,11 +1027,13 @@ export function activate(context: vscode.ExtensionContext): void {
     drafts.delete(n._specUrl!);
     await updateEntry(n._specUrl!, () => null);
     forgetApis([n._specUrl!]);
+    releaseWatchers();
   }
 
   context.subscriptions.push(
     treeView,
     vscode.commands.registerCommand("swaggerViewer.addApi", () => addApi()),
+    vscode.commands.registerCommand("swaggerViewer.addSpecFile", (uri?: vscode.Uri) => addSpecFile(uri)),
     vscode.commands.registerCommand("swaggerViewer.apiSettings", (arg?: Node) => apiSettings(arg)),
     vscode.commands.registerCommand("swaggerViewer.renameApi", (arg?: Node) => apiSettings(arg, "name")),
     vscode.commands.registerCommand("swaggerViewer.removeApi", (arg?: Node) => removeApi(arg)),
@@ -1013,6 +1149,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const live = new Set(specEntries().map((x) => x.url));
       for (const u of live) for (const g of specCache.get(u)?.groups || []) live.add(g.url);
       forgetApis([...specCache.keys()].filter((u) => !live.has(u)));
+      releaseWatchers();
     })
   );
 
