@@ -37,7 +37,9 @@ export function openSwaggerUi(
       "swaggerUi",
       title,
       { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
-      { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [mediaRoot] }
+      // retainContextWhenHidden "has high memory overhead"; getState/setState is "the preferred way"
+      // (https://code.visualstudio.com/api/extension-guides/webview). The page saves what is being viewed.
+      { enableScripts: true, retainContextWhenHidden: false, localResourceRoots: [mediaRoot] }
     );
     panel.onDidDispose(() => {
       panel = null;
@@ -61,7 +63,7 @@ export function openSwaggerUi(
       `script-src 'nonce-${nonce}'; ` +
       `img-src ${webview.cspSource} data:; ` +
       `font-src ${webview.cspSource};`;
-    webview.html = render(asset, csp, nonce, specWithServers, httpOptions.headers || {}, focus);
+    webview.html = render(asset, csp, nonce, specWithServers, focus);
     currentSpecUrl = baseUrl;
     currentBase = base;
   } else if (focus) {
@@ -140,11 +142,9 @@ function render(
   csp: string,
   nonce: string,
   spec: OpenApiSpec,
-  headers: Record<string, string>,
   focus?: FocusTarget
 ): string {
   const specJson = JSON.stringify(spec).replace(/</g, "\\u003c");
-  const headersJson = JSON.stringify(headers).replace(/</g, "\\u003c");
   const focusJson = JSON.stringify(focus ?? null).replace(/</g, "\\u003c");
   return `<!DOCTYPE html>
 <html>
@@ -167,7 +167,8 @@ function render(
   <script nonce="${nonce}" src="${asset("swagger-ui-standalone-preset.js")}"></script>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
-    const extraHeaders = ${headersJson};
+    // Configured headers and the stored credential are added by the extension for each request
+    // (handleMessage), from the settings current at that moment — never written into this page.
 
     // Proxy Try it out calls (arbitrary API origin) through the extension (node) to bypass CORS.
     const origFetch = window.fetch.bind(window);
@@ -258,7 +259,9 @@ function render(
       return CSS.escape(String(s).trim().replace(/\\s/g, "_"));
     }
 
-    // Scroll to and expand the operation/model selected in the tree (poll briefly since rendering is async)
+    // Scroll to and expand the operation/model selected in the tree (poll briefly since rendering is async).
+    // Tags and the Models section start collapsed (docExpansion "none"), and Swagger UI renders their
+    // content only when opened — so open the section first.
     function doFocus(focus) {
       if (!focus) return;
       let n = 0;
@@ -266,12 +269,21 @@ function render(
         n++;
         let el = null;
         if (focus.kind === "operation") {
+          const section = document.getElementById(escapeDeepLinkPath("operations-tag-" + focus.tag));
+          if (section && section.getAttribute("data-is-open") === "false") section.click();
           el = document.getElementById(escapeDeepLinkPath(["operations", focus.tag, swaggerOpId(focus)].join("-")));
         } else if (focus.kind === "model") {
           el = document.getElementById("model-" + focus.name);
+          const models = document.querySelector("section.models");
+          if (!el && models && !models.classList.contains("is-open")) {
+            const ctl = models.querySelector(".models-control");
+            if (ctl) ctl.click();
+          }
         }
         if (el) {
           clearInterval(timer);
+          // Kept by VS Code while the panel is hidden; restored when it is shown again.
+          vscode.setState({ focus });
           if (focus.kind === "operation" && !el.classList.contains("is-open")) {
             // swagger-ui 5 toggles on this button; the .opblock-summary container has no handler.
             const ctl = el.querySelector(".opblock-summary-control");
@@ -285,18 +297,19 @@ function render(
     }
 
     const spec = ${specJson};
-    const initialFocus = ${focusJson};
+    // A focus from the tree wins; otherwise what was being viewed before the panel was hidden.
+    const initialFocus = ${focusJson} || (vscode.getState() || {}).focus || null;
     window.ui = SwaggerUIBundle({
       spec,
       dom_id: "#swagger-ui",
       deepLinking: true,
+      // Start collapsed: only tag headers are rendered up front, which keeps large specs fast and small
+      // (https://swagger.io/docs/open-source-tools/swagger-ui/usage/configuration/).
+      docExpansion: "none",
+      defaultModelsExpandDepth: 0,
       validatorUrl: null,
       presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
       layout: "StandaloneLayout",
-      requestInterceptor: (req) => {
-        Object.assign(req.headers, extraHeaders);
-        return req;
-      },
       onComplete: () => { if (initialFocus) doFocus(initialFocus); },
     });
   </script>
@@ -305,5 +318,7 @@ function render(
 }
 
 function makeNonce(): string {
-  return randomBytes(16).toString("base64").replace(/[^A-Za-z0-9]/g, "");
+  return randomBytes(16)
+    .toString("base64")
+    .replace(/[^A-Za-z0-9]/g, "");
 }

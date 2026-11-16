@@ -42,6 +42,7 @@ test("R2: multipart upload reaches the server as multipart/form-data with the fi
 }) => {
   const r = renderWebview(spec, `${srv.origin}/v3/api-docs`);
   await openInPage(page, r);
+  await page.locator("#operations-tag-files").click(); // tags start collapsed
   const op = page.locator("#operations-files-upload");
   await op.locator(".opblock-summary-control").click();
   await op.locator("button.try-out__btn").click();
@@ -93,6 +94,7 @@ test("response JSON stays readable under VS Code's light default webview styles"
     };
     const r = renderWebview(getSpec, `${json.origin}/v3/api-docs`);
     await openInPage(page, r);
+    await page.locator("#operations-tag-t").click(); // tags start collapsed
     const op = page.locator("#operations-t-json");
     await op.locator(".opblock-summary-control").click();
     await op.locator("button.try-out__btn").click();

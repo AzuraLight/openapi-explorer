@@ -32,7 +32,7 @@ tree plus an embedded Swagger UI — no more opening the docs page in Chrome.
   **offline / behind a firewall**.
 - **Endpoint search palette** — fuzzy search by method / path / summary, then jump to it.
 - **Code generation** — right-click a tree item to copy the response type (TypeScript, with
-  dependent models, JSDoc, and envelope unwrapping), a `fetch` / `axios` client function, or cURL.
+  dependent models, JSDoc, and envelope responses spelled out), a `fetch` / `axios` client function, or cURL.
 - **Multiple gateways, managed like Explorer folders** — ＋ / right-click **Add API**, **Rename**, **Edit URL**,
   **Remove API**; stored in `swaggerViewer.specs`.
 - **UI URL auto-discovery** — paste a `.../api-docs` (Swagger UI page) URL and the real spec
@@ -53,16 +53,12 @@ tree plus an embedded Swagger UI — no more opening the docs page in Chrome.
 2. Browse the tree, or hit **OpenAPI: Search Endpoints** (`Cmd/Ctrl+Alt+/`).
 3. Click an endpoint to open it in Swagger UI; right-click for code generation.
 
-For authenticated APIs, **right-click the gateway node → Set Auth Token** (or run
-**OpenAPI: Set Auth Token** and pick the host(s)). The token is stored per host in the OS keychain
-(SecretStorage) and sent as `Authorization: Bearer …` only to that host.
-
-If the spec URL itself is behind an HTTP Basic login (browser shows a username/password
-prompt, returns `401`), **right-click the gateway node in the tree → Set Username & Password**
-(or run the command from the palette). It is stored in SecretStorage and sent as
-`Authorization: Basic …`. Credentials are kept **per host** — the tree shows a 🔑 marker with
-the saved username, and the palette command can apply one pair to several gateways at once
-when they share a login.
+For authenticated APIs, open the API's settings (**right-click the API → API Settings…**, or
+**Set Auth Token** / **Set Username & Password** in the view's `···` menu or the palette — with no API
+selected you pick one) and choose a Bearer token or an HTTP Basic username & password. Credentials are
+stored per host in the OS keychain (SecretStorage) and sent as `Authorization: Bearer …` /
+`Authorization: Basic …` only to that host; APIs on the same host share them. The tree shows a 🔑
+marker (and the saved username) on APIs that have credentials.
 
 ## Configuration
 
