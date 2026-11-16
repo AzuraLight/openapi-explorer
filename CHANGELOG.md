@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-11-16
+
+### Added
+
+- **Local spec files.** Right-click a JSON file named like `openapi.json`, `swagger.json` or `api-docs.json` in the
+  Explorer → **Add to OpenAPI Explorer** (named from the spec's title), or enter a `file://` URL in the API
+  settings. Saving the file updates the tree and the open Swagger UI. A local file is read only when the API is
+  that file: a remote docs page or swagger-config that points at `file://` is refused.
+
+### Removed
+
+- **YAML specs are no longer read.** The YAML parser could stall the extension for minutes on a crafted
+  document (one mapping with many keys: 40,000 keys took 11.6 s, 200,000 keys about 2.4 MB did not finish in
+  minutes; the same in JSON takes milliseconds), and it doubled the bundle size. springdoc and NestJS also serve
+  JSON by default (`/v3/api-docs`, `/{path}-json`); FastAPI and ASP.NET Core serve JSON only. A YAML spec now
+  fails with a message that says so and names the URL, instead of loading another spec on the host. A springdoc
+  setup whose primary group is YAML still shows its JSON groups.
+
 ## [1.2.1] - 2026-11-13
 
 ### Fixed
@@ -157,6 +175,7 @@ First public release.
 - Response bodies are capped (25 MB) to prevent memory pressure from huge responses.
 - Webview CSP narrowed (`img-src` no longer allows arbitrary `https:`).
 
+[1.3.0]: https://github.com/AzuraLight/openapi-explorer/releases/tag/v1.3.0
 [1.2.1]: https://github.com/AzuraLight/openapi-explorer/releases/tag/v1.2.1
 [1.2.0]: https://github.com/AzuraLight/openapi-explorer/releases/tag/v1.2.0
 [1.1.1]: https://github.com/AzuraLight/openapi-explorer/releases/tag/v1.1.1
